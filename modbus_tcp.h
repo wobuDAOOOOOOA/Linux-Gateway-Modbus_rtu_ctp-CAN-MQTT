@@ -4,7 +4,6 @@
 #include <errno.h>
 
 modbus_t* modbus_tcp_bconnect();
-//void modbus_read(modbus_t *ctx);
 int modbus_robust_read(modbus_t **ctx, int addr, int nb, uint16_t *dest);
 
 extern  uint16_t tab_reg[64];

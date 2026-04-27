@@ -51,6 +51,7 @@ int modbus_robust_read(modbus_t **ctx, int addr, int nb, uint16_t *dest) {
         if (retry < MAX_RETRY) {
             printf("%d 秒后重试\n", RETRY_DELAY);
             sleep(RETRY_DELAY);
+            printf("指数退避");
         }
         // 这里不需要 continue，因为后面没有代码了，自然进入下一次 while
     }
@@ -59,22 +60,3 @@ int modbus_robust_read(modbus_t **ctx, int addr, int nb, uint16_t *dest) {
     printf("重连失败，已达最大重试次数 %d\n", MAX_RETRY);
     return -1;
 }
-/*void modbus_read(modbus_t *ctx)
-{
-    // 4. 读取保持寄存器
-    // 从地址 0 开始，读取 10 个保持寄存器
-    rc = modbus_read_registers(ctx, 0, 10, tab_reg);
-    if (rc == -1) {
-    fprintf(stderr, "[ERROR] 读取失败: %s\n", modbus_strerror(errno));
-    // 这里可以尝试重连逻辑（可选）
-} else if (rc != 10) { // 假设你要读10个寄存器
-    fprintf(stderr, "[WARN] 期望读10个，实际读了%d个\n", rc);
-} else {
-    printf("[OK] 成功读取10个寄存器\n");
-    for (int i = 0; i < rc; i++) {
-        printf("reg[%d] = %d\n", i, tab_reg[i]);
-    }
-}
-
-
-}*/
