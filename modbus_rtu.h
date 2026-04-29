@@ -3,9 +3,10 @@
 #include <modbus/modbus.h>
 #include <errno.h>
 
-int modbus_RTU_read();
+modbus_t* modbus_RTU_bconnect(void);
+int modbus_rtu_robust_read(modbus_t **RTU_ctx,int addr, int nb, uint16_t *dest);
 
 
-extern  int16_t RTU_DATA[64];
+
 extern  int8_t RTU_rc;
 #endif
