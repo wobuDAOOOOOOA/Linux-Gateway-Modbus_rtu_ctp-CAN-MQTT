@@ -1,6 +1,6 @@
 #ifndef _CAN_H_
 #define _CAN_H_
-int my_can_Init();
+int my_can_send(u_int16_t id, u_int16_t dlc, short unsigned int* data_M);
 
 
 #endif

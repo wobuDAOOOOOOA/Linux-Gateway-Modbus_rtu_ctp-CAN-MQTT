@@ -20,3 +20,9 @@ $(TARGET): $(SRCS)
 
 clean:
 		rm -f $(TARGET) $(TARGET)_debug
+DEPFLAGS = -MMD -MP
+CFLAGS += $(DEPFLAGS)
+
+# 自动包含所有 .d 依赖文件
+DEPS = $(SRCS:.c=.d)
+-include $(DEPS)
