@@ -1,7 +1,6 @@
 #ifndef _CAN_H_
 #define _CAN_H_
+int my_can_Init();
 
-void can_Init(void);
-void can_tx(void);
 
 #endif

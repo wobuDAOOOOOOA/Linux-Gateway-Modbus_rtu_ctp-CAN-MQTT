@@ -1,0 +1,66 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-g",
+      "-O0",
+      "-DDEBUG",
+      "-o",
+      "gateway_debug",
+      "can.c"
+    ],
+    "directory": "/home/wdz/gateway",
+    "file": "/home/wdz/gateway/can.c",
+    "output": "/home/wdz/gateway/gateway_debug"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-g",
+      "-O0",
+      "-DDEBUG",
+      "-o",
+      "gateway_debug",
+      "modbus_tcp.c"
+    ],
+    "directory": "/home/wdz/gateway",
+    "file": "/home/wdz/gateway/modbus_tcp.c",
+    "output": "/home/wdz/gateway/gateway_debug"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-g",
+      "-O0",
+      "-DDEBUG",
+      "-o",
+      "gateway_debug",
+      "modbus_rtu.c"
+    ],
+    "directory": "/home/wdz/gateway",
+    "file": "/home/wdz/gateway/modbus_rtu.c",
+    "output": "/home/wdz/gateway/gateway_debug"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-c",
+      "-Wall",
+      "-g",
+      "-O0",
+      "-DDEBUG",
+      "-o",
+      "gateway_debug",
+      "main.c"
+    ],
+    "directory": "/home/wdz/gateway",
+    "file": "/home/wdz/gateway/main.c",
+    "output": "/home/wdz/gateway/gateway_debug"
+  }
+]

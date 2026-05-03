@@ -4,7 +4,7 @@ CC = gcc
 CFLAGS = -Wall -g
 LDLIBS = -lmodbus
 
-DEBUG_CFLAGS = -Wall -g -O0 -DDEBUG
+DEBUG_CFLAGS = -Wall -g -O0 -DNDEBUG
 RELEASE_CFLAGS = -Wall -O2 -DNDEBUG -s
 # 编译 debug 版本
 debug:
