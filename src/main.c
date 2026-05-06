@@ -22,12 +22,13 @@ int main(void) {
        if (modbus_robust_read(&ctx, 0, 10, regs) == -1) {
             printf("TCP:重连失败，5秒后继续重试\n");
             sleep(5);
-            tcp_retry++;
-            if(tcp_retry == 2 )
-            {
-                LOG_ERROR("TCP重连以达到最大次数,请检查连接");
-            }
-            else  continue;
+            continue;
+            // tcp_retry++;
+            // if(tcp_retry == 2 )
+            // {
+            //     LOG_ERROR("TCP重连以达到最大次数,请检查连接");
+            // }
+           // else  continue;
 
         }
        
@@ -41,18 +42,20 @@ int main(void) {
         {
             LOG_ERROR("RTU:重连失败,100秒后继续重试\n");
             sleep(5);
-            rtu_retry++;
-             if(rtu_retry == 2 )
-            {
-                LOG_ERROR("RTU重连以达到最大次数,请检查连接");
-            }
-            else  continue;
-         //   continue;
+            // rtu_retry++;
+            //  if(rtu_retry == 2 )
+            // {
+            //     LOG_ERROR("RTU重连以达到最大次数,请检查连接");
+            // }
+            // else  continue;
+            continue;
         }
          for (int i = 0; i < 2; i++) {
             LOG_INFO("RTU_DATA[%d] = %d\n", i,RTU_DATA[i]);
         }
         sleep(1);
+    my_can_send(0x123, 2, RTU_DATA);
+
     }
     return 0;
 }
