@@ -1,0 +1,3 @@
+cd /home/wdz/modbus_slave
+source /home/wdz/gateway/modbus_tcp_slave/venv/bin/activate   # 如果虚拟环境在 gateway 下
+python slave.py

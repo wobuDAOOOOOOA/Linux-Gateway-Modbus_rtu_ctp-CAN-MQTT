@@ -1,28 +1,38 @@
-TARGET = gateway
-SRCS = can.c modbus_tcp.c modbus_rtu.c main.c
+# 编译器
 CC = gcc
-CFLAGS = -Wall -g
+
+# 目录结构
+SRC_DIR = src
+INC_DIR = include
+
+# 源文件（在 src/ 目录下找）
+SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/can.c $(SRC_DIR)/modbus_tcp.c $(SRC_DIR)/modbus_rtu.c
+
+# 目标文件名（debug 和 release 用不同名字）
+TARGET_DEBUG = gateway_debug
+TARGET_RELEASE = gateway
+
+# 编译选项
+DEBUG_CFLAGS = -Wall -g -O0 -DDEBUG
+RELEASE_CFLAGS = -Wall -O2 -DNDEBUG -s
+
+# 头文件路径
+CFLAGS += -I$(INC_DIR)
+
+# 链接库
 LDLIBS = -lmodbus
 
-DEBUG_CFLAGS = -Wall -g -O0 -DNDEBUG
-RELEASE_CFLAGS = -Wall -O2 -DNDEBUG -s
-# 编译 debug 版本
+# debug 版本
 debug:
-		$(CC) $(DEBUG_CFLAGS) -o $(TARGET)_debug $(SRCS) $(LDLIBS)
+	$(CC) $(DEBUG_CFLAGS) $(CFLAGS) -o $(TARGET_DEBUG) $(SRCS) $(LDLIBS)
 
-# 编译 release 版本
+# release 版本
 release:
-		$(CC) $(RELEASE_CFLAGS) -o $(TARGET) $(SRCS) $(LDLIBS)
+	$(CC) $(RELEASE_CFLAGS) $(CFLAGS) -o $(TARGET_RELEASE) $(SRCS) $(LDLIBS)
 
-
-$(TARGET): $(SRCS)
-		$(CC) $(CFLAGS) -o $(TARGET) $(SRCS) $(LDLIBS)
-
+# 清理
 clean:
-		rm -f $(TARGET) $(TARGET)_debug
-DEPFLAGS = -MMD -MP
-CFLAGS += $(DEPFLAGS)
+	rm -f $(TARGET_DEBUG) $(TARGET_RELEASE)
 
-# 自动包含所有 .d 依赖文件
-DEPS = $(SRCS:.c=.d)
--include $(DEPS)
+# 防止文件重名冲突
+.PHONY: debug release clean
