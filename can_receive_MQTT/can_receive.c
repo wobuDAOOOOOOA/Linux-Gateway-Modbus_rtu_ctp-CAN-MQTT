@@ -6,6 +6,7 @@
 #include <sys/ioctl.h>
 #include <linux/can.h>
 #include <linux/can/raw.h>
+#include"log.h"
 
 int main() {
     int s;
@@ -46,10 +47,10 @@ int main() {
             return 1;
         }
 
-        printf("收到过滤后: ID=0x%03X, DLC=%d, Data=",
+        LOG_INFO("收到过滤后: ID=0x%03X, DLC=%d, Data=",
                frame.can_id, frame.can_dlc);
         for (int i = 0; i < frame.can_dlc; i++) {
-            printf("%02X ", frame.data[i]);
+            LOG_INFO("can_receive:%02X ", frame.data[i]);
         }
         printf("\n");
     }
