@@ -39,6 +39,8 @@ addr.can_family = AF_CAN;
 addr.can_ifindex = ifr.ifr_ifindex;
 bind(s, (struct sockaddr *)&addr, sizeof(addr));
 LOG_DEBUG("CAN:绑定接口");
+LOG_INFO("CAN:初始化完成");
+
 return 0;
 
 }
@@ -62,10 +64,7 @@ if (write(s, &frame, sizeof(frame)) != sizeof(frame)) {
     filter[0].can_mask = CAN_SFF_MASK;       // 掩码：全匹配（11 位全比较）
     setsockopt(s, SOL_CAN_RAW, CAN_RAW_FILTER,
                &filter, sizeof(filter));
- LOG_INFO("CAN:过滤器设置完成%d\n",0x123);
-
-LOG_INFO("CAN:初始化完成");
-
+ LOG_INFO("CAN:过滤器设置完成0x%x\n",0x123);
 LOG_INFO("CAN:数据发送成功");
 return 0;
 }
