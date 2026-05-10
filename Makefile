@@ -6,7 +6,7 @@ SRC_DIR = src
 INC_DIR = include
 
 # 源文件（在 src/ 目录下找）
-SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/can.c $(SRC_DIR)/modbus_tcp.c $(SRC_DIR)/modbus_rtu.c
+SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/can.c $(SRC_DIR)/modbus_tcp.c $(SRC_DIR)/modbus_rtu.c $(SRC_DIR)/mqtt_huawei.c
 
 # 目标文件名（debug 和 release 用不同名字）
 TARGET_DEBUG = gateway_debug
@@ -20,7 +20,7 @@ RELEASE_CFLAGS = -Wall -O2 -DNDEBUG -s
 CFLAGS += -I$(INC_DIR)
 
 # 链接库
-LDLIBS = -lmodbus -lpthread
+LDLIBS = -lmodbus -lpthread -lmosquitto
 
 # debug 版本
 debug:

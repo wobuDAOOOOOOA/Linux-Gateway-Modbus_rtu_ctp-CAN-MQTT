@@ -23,7 +23,8 @@
 #define PROP_TEMP       "temperature"
 #define PROP_HUM        "humidity"
 #define PAYLOAD_TEMPLATE "{\"services\":[{\"service_id\":\"%s\",\"properties\":{\"%s\":%.1f,\"%s\":%.1f}}]}"
-
+int max_publish = 5;
+int publish_count = 0;
 static struct mosquitto *g_mosq = NULL;
 
 int mqtt_publish_data(float temperature, float humidity) {
@@ -54,11 +55,10 @@ void mqtt_disconnect_and_cleanup() {
     mosquitto_lib_cleanup();
     printf("信息: MQTT 客户端已断开并清理资源。\n");
 }
-
-int MQTT_publish(float temperature, float humidity) {
-    int ret;
-    int max_publish = 5;
-    int publish_count = 0;
+int mqtt_Init()
+{
+int ret;
+  
 
     // 初始化 libmosquitto 库
     mosquitto_lib_init();
@@ -87,14 +87,13 @@ int MQTT_publish(float temperature, float humidity) {
     
     printf("成功: MQTT客户端已使用密钥方式连接华为云 IoTDA 平台。\n");
     mosquitto_loop_start(g_mosq);
-    sleep(1);
+        return 0;
+}
     
-    while (publish_count < max_publish) {
-        mqtt_publish_data(temperature, humidity);
-        publish_count++;
-        sleep(3);
-    }
-    
-    mqtt_disconnect_and_cleanup();
+
+int MQTT_publish(float temperature, float humidity) {
+  
+   
+    mqtt_publish_data(temperature, humidity);
     return 0;
 }
