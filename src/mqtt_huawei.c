@@ -55,7 +55,7 @@ void mqtt_disconnect_and_cleanup() {
     printf("信息: MQTT 客户端已断开并清理资源。\n");
 }
 
-int main() {
+int MQTT_publish(float temperature, float humidity) {
     int ret;
     int max_publish = 5;
     int publish_count = 0;
@@ -90,7 +90,7 @@ int main() {
     sleep(1);
     
     while (publish_count < max_publish) {
-        mqtt_publish_data(20.5 + publish_count, 30.5);
+        mqtt_publish_data(temperature, humidity);
         publish_count++;
         sleep(3);
     }

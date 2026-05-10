@@ -20,7 +20,7 @@ RELEASE_CFLAGS = -Wall -O2 -DNDEBUG -s
 CFLAGS += -I$(INC_DIR)
 
 # 链接库
-LDLIBS = -lmodbus
+LDLIBS = -lmodbus -lpthread
 
 # debug 版本
 debug:
