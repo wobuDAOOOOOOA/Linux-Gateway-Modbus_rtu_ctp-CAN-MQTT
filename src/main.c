@@ -99,7 +99,7 @@ void *MQTT_pthread(void *arg) {
 
     while (1) {
         pthread_mutex_lock(&mutex);
-        MQTT_publish(2,2);
+        MQTT_publish(latest_temperature,latest_humidity);
         pthread_mutex_unlock(&mutex);
 sleep(1);
     }
@@ -146,4 +146,7 @@ pthread_create(&tids[3], NULL, MQTT_pthread, NULL);
 }
 
 }  
-
+//启动虚拟接口
+//sudo modprobe vcan
+//sudo ip link add dev vcan0 type vcan
+//sudo ip link set up vcan0
