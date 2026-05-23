@@ -134,15 +134,7 @@ pthread_create(&tids[3], NULL, MQTT_pthread, NULL);
 {  
         LOG_DEBUG("主线程");
 
-//   struct can_frame frame;
-//         int nbytes = read(s, &frame, sizeof(frame));
-//         if (nbytes > 0) {
-//             LOG_INFO("主线程原生 read 收到: ID=%x", frame.can_id);
-//         }
-
-
   sleep(1);
-
 }
 
 }  
