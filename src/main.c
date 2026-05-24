@@ -10,7 +10,7 @@
 #include <linux/can.h>
 #include <sys/socket.h>
 #include <unistd.h>    // for read()
-
+#include"config.h"
 // 声明外部变量 s，它在 can.c 中定义
 uint16_t regs[2]={1,2};
 modbus_t *ctx = NULL;// 初始为 NULL，robust_read 内部会创建连接
@@ -112,14 +112,24 @@ sleep(1);
  // pthread_mutex_lock(&mutex);
        // pthread_mutex_unlock(&mutex)
 
-
+//启动虚拟接口
+/*
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set up vcan0
+*/
 
 
 
 
 
 int main(void) {
-
+  // 先加载默认值
+    config_set_default(&cfg);           // 直接用全局的 cfg
+    config_load("./gateway.conf", &cfg);
+    
+    printf("Modbus port: %s\n", cfg.modbus_port);
+      printf("can port: %s\n", cfg.can_interface);
     pthread_t tids[4];
 mqtt_Init();
 can_Init();
@@ -128,8 +138,8 @@ pthread_create(&tids[0], NULL, modbus_rtu_read, NULL);
 pthread_create(&tids[1], NULL, modbus_tcp_read, NULL);
 pthread_create(&tids[2], NULL, can_receive_pthread, NULL);
 pthread_create(&tids[3], NULL, MQTT_pthread, NULL);
+    
   
-
     while(1)
 {  
         LOG_DEBUG("主线程");
@@ -138,7 +148,3 @@ pthread_create(&tids[3], NULL, MQTT_pthread, NULL);
 }
 
 }  
-//启动虚拟接口
-//sudo modprobe vcan
-//sudo ip link add dev vcan0 type vcan
-//sudo ip link set up vcan0

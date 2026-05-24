@@ -2,18 +2,20 @@
 #include <modbus/modbus.h>
 #include <errno.h>
 #include"log.h"
+#include"config.h"
 
 #define RTU_MAXretry 3
 #define RTU_retrytime 5
-modbus_t* RTU_ctx = NULL;
+extern gateway_config_t cfg;  // 告诉编译器：cfg 在别的文件里定义好了
 
+modbus_t* RTU_ctx = NULL;
 int8_t RTU_rc = 0;
 modbus_t* modbus_RTU_bconnect(void)
 {
            LOG_DEBUG("RTU:进入modbus_RTU创建连接函数");
                    LOG_INFO("RTU:modbus_RTU创建连接...");
     //创建上下文，里面要传入设备位置，波特率，校验位，数据位，停止位
-RTU_ctx = modbus_new_rtu("/dev/ttyACM0",4800,'N',8,1);
+RTU_ctx = modbus_new_rtu(cfg.modbus_port,cfg.modbus_baudrate,'N',8,1);
 if(RTU_ctx == NULL)
 {
 LOG_ERROR("RTU:无法建立上下文%s\n",modbus_strerror(errno));
@@ -55,7 +57,7 @@ while(retry < RTU_MAXretry)
     
        //成功就set_slave设置从机地址
 
-modbus_set_slave(*RTU_ctx,1);
+modbus_set_slave(*RTU_ctx,cfg.modbus_slave_id);
 //然后用modbus_read_registers
 rc = modbus_read_registers(*RTU_ctx,0,2,dest);
 if(rc != -1)
