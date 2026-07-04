@@ -1,38 +1,34 @@
-# 编译器
-CC = gcc
+# 交叉编译工具链
+CC = arm-rockchip830-linux-uclibcgnueabihf-gcc
 
-# 目录结构
+# 目录
 SRC_DIR = src
 INC_DIR = include
+LIB_DIR = /home/wdz/libmodbus_arm/lib
+MOSQ_DIR = /home/wdz/mosquitto-2.0.18/lib
 
-# 源文件（在 src/ 目录下找）
-SRCS = $(SRC_DIR)/main.c $(SRC_DIR)/can.c $(SRC_DIR)/modbus_tcp.c $(SRC_DIR)/modbus_rtu.c $(SRC_DIR)/mqtt_huawei.c $(SRC_DIR)/config.c
+# 源文件
+SRCS = $(SRC_DIR)/main.c \
+       $(SRC_DIR)/modbus_rtu.c \
+       $(SRC_DIR)/modbus_tcp.c \
+       $(SRC_DIR)/can.c \
+       $(SRC_DIR)/mqtt_huawei.c \
+       $(SRC_DIR)/config.c \
+      # $(SRC_DIR)/log.c
 
-# 目标文件名（debug 和 release 用不同名字）
-TARGET_DEBUG = gateway_debug
-TARGET_RELEASE = gateway
+# 输出
+TARGET = gateway
 
 # 编译选项
-DEBUG_CFLAGS = -Wall -g -O0 -DDEBUG
-RELEASE_CFLAGS = -Wall -O2 -DNDEBUG -s
+CFLAGS = -Wall -O2 -I$(INC_DIR) -I/home/wdz/libmodbus_arm/include -I/home/wdz/mosquitto-2.0.18/include
+LDFLAGS = -L$(LIB_DIR) -L$(MOSQ_DIR) -lmodbus -lmosquitto -lpthread
 
-# 头文件路径
-CFLAGS += -I$(INC_DIR)
+all: $(TARGET)
 
-# 链接库
-LDLIBS = -lmodbus -lpthread -lmosquitto
+$(TARGET): $(SRCS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-# debug 版本
-debug:
-	$(CC) $(DEBUG_CFLAGS) $(CFLAGS) -o $(TARGET_DEBUG) $(SRCS) $(LDLIBS)
-
-# release 版本
-release:
-	$(CC) $(RELEASE_CFLAGS) $(CFLAGS) -o $(TARGET_RELEASE) $(SRCS) $(LDLIBS)
-
-# 清理
 clean:
-	rm -f $(TARGET_DEBUG) $(TARGET_RELEASE)
+	rm -f $(TARGET)
 
-# 防止文件重名冲突
-.PHONY: debug release clean
+.PHONY: all clean

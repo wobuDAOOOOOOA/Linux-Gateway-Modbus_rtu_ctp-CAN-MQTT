@@ -7,7 +7,5 @@
 			"path": "../../test_drv"
 		}
 	],
-	"settings": {
-		"terminal.integrated.enableVisualBell": true
-	}
+	"settings": {}
 }

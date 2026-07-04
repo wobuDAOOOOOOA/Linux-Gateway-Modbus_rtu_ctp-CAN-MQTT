@@ -7,16 +7,16 @@
 gateway_config_t cfg;
 
 void config_set_default(gateway_config_t *cfg_ptr) {
-    strcpy(cfg_ptr->modbus_port, "/dev/ttyUSB0");
-    cfg_ptr->modbus_baudrate = 9600;
+    strcpy(cfg_ptr->modbus_port, "/dev/ttyS3");
+    cfg_ptr->modbus_baudrate = 4800;
     cfg_ptr->modbus_slave_id = 1;
     strcpy(cfg_ptr->can_interface, "vcan0");
-    strcpy(cfg_ptr->mqtt_broker, "192.168.1.100");
-    cfg_ptr->mqtt_port = 1883;
-    strcpy(cfg_ptr->mqtt_topic, "/sensor/data");
-    strcpy(cfg_ptr->mqtt_client_id, "gateway_001");
+    strcpy(cfg_ptr->mqtt_broker, "117.78.5.125");
+    cfg_ptr->mqtt_port =1883;
+    strcpy(cfg_ptr->mqtt_topic, "$oc/devices/69fe6602cbb0cf6bb958fad5_TempHumi/sys/properties/report");
+    strcpy(cfg_ptr->mqtt_client_id, "69fe6602cbb0cf6bb958fad5_TempHumi_0_0_2026070207");
     strcpy(cfg_ptr->mqtt_username, "69fe6602cbb0cf6bb958fad5_TempHumi");
-    strcpy(cfg_ptr->mqtt_password, "4897317957bb35698971f91ad52af3a6abedb507fcd044fa1749ff24b43de744");
+    strcpy(cfg_ptr->mqtt_password, "cf059d90b349820ece3aa4487f92cd846758b82f5d4434fc078d117469b0364f");
 }
 
 int config_load(const char *filename, gateway_config_t *cfg_ptr) {

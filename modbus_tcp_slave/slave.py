@@ -8,4 +8,4 @@ store = ModbusSlaveContext(
 context = ModbusServerContext(slaves=store, single=True)
 
 print("✅ Modbus TCP 从站启动成功 端口：5020 (寄存器值=123)")
-StartTcpServer(context, address=("0.0.0.0", 5020))
+StartTcpServer(context, address=('0.0.0.0', 5020))
