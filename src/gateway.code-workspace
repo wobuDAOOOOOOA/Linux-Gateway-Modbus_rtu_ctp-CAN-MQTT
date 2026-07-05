@@ -4,8 +4,10 @@
 			"path": ".."
 		},
 		{
-			"path": "../../test_drv"
+			"path": "../.."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"git.ignoreLimitWarning": true
+	}
 }

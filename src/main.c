@@ -3,7 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
-
+#include <time.h>
 #include"modbus_tcp.h"
 #include"modbus_rtu.h"
 #include"can.h"
@@ -12,37 +12,13 @@
 #include <linux/can.h>
 #include <sys/socket.h>
 #include"config.h"
+#include"gateway.h"
+
 #define ture 1
-// ====================== 工业级网关资源管理器 核心结构体 ======================
-typedef struct {
-    // 线程句柄
-    pthread_t threads[4];
+int jj;
 
-    // 通信句柄
-    modbus_t *rtu_ctx;
-    modbus_t *tcp_ctx;
-
-    // 同步互斥锁
-    pthread_mutex_t data_mutex;
-    pthread_mutex_t bus_mutex;
-
-    // 全局运行状态机
-    uint8_t running;
-
-    // 业务数据缓存
-    uint16_t regs[2];
-    unsigned short rtu_data[64];
-    float latest_temperature;
-    float latest_humidity;
-
-    // 重连计数
-    int tcp_retry;
-    int rtu_retry;
-} gateway_manager_t;
-
-// 全局唯一网关管理器实例（整个程序仅此一个）
-static gateway_manager_t g_mgr;
-
+  // 全局唯一实体定义（全工程仅此一处）
+    gateway_manager_t mgr;
 // ====================== 资源初始化函数 ======================
 static void gateway_manager_init(gateway_manager_t *mgr)
 {
@@ -51,9 +27,9 @@ static void gateway_manager_init(gateway_manager_t *mgr)
     // 初始化锁
     pthread_mutex_init(&mgr->data_mutex, NULL);
     pthread_mutex_init(&mgr->bus_mutex, NULL);
-    
-    // 开启运行开关
+       // 开启运行开关
     mgr->running = ture;
+    mgr->rtu_collect_enable=1;
     // 初始化默认寄存器数据
     mgr->regs[0] = 1;
     mgr->regs[1] = 2;
@@ -63,31 +39,30 @@ static void gateway_manager_init(gateway_manager_t *mgr)
 void gateway_cleanup(void)
 {
     LOG_INFO("【工业清理】执行网关全资源释放...");
-    gateway_manager_t *mgr = &g_mgr;
 
-    // 关闭TCP连接
-    if (mgr->tcp_ctx) {
-        modbus_close(mgr->tcp_ctx);
-        modbus_free(mgr->tcp_ctx);
-        mgr->tcp_ctx = NULL;
+    // 直接操作全局mgr，去掉多余临时指针
+    if (mgr.tcp_ctx) {
+        modbus_close(mgr.tcp_ctx);
+        modbus_free(mgr.tcp_ctx);
+        mgr.tcp_ctx = NULL;
     }
 
     // 关闭RTU串口连接
-    if (mgr->rtu_ctx) {
-        modbus_close(mgr->rtu_ctx);
-        modbus_free(mgr->rtu_ctx);
-        mgr->rtu_ctx = NULL;
+    if (mgr.rtu_ctx) {
+        modbus_close(mgr.rtu_ctx);
+        modbus_free(mgr.rtu_ctx);
+        mgr.rtu_ctx = NULL;
     }
 
     // 销毁锁资源
-    pthread_mutex_destroy(&mgr->data_mutex);
-    pthread_mutex_destroy(&mgr->bus_mutex);
+    pthread_mutex_destroy(&mgr.data_mutex);
+    pthread_mutex_destroy(&mgr.bus_mutex);
 
     LOG_INFO("【工业清理】所有资源释放完成，零泄漏！");
 }
 
-// ====================== 所有线程函数（全部改用传参上下文） ======================
-void *modbus_tcp_read(void *arg) {
+// ====================== 所有线程函数（统一全局mgr） ======================
+ void *modbus_tcp_read(void *arg) {
     gateway_manager_t *mgr = (gateway_manager_t *)arg;
     while (mgr->running) {
         if (modbus_robust_read(&mgr->tcp_ctx, 0, 10, mgr->regs) == -1) {
@@ -99,29 +74,82 @@ void *modbus_tcp_read(void *arg) {
         for (int i = 0; i < 2; i++) {
             printf("reg[%d] = %d\n", i, mgr->regs[i]);
         }
+        //pthread_mutex_lock(&mgr->bus_mutex);
         my_can_send(0x123, 2, mgr->regs);
+      // pthread_mutex_unlock(&mgr->bus_mutex);
+
         sleep(1);
     }
     return NULL;
 }
 
-void *modbus_rtu_read(void *arg) {
+void *modbus_rtu_read(void *arg)
+{
     gateway_manager_t *mgr = (gateway_manager_t *)arg;
-    while (mgr->running) {
-        if (modbus_rtu_robust_read(&mgr->rtu_ctx,0,2,mgr->rtu_data) == -1)
+    // 记录上一次采集状态，用于去重日志
+    int last_collect_state = mgr->rtu_collect_enable;
+
+    // 线程永久常驻，仅受全局running标记控制
+    while (mgr->running)
+    {
+       jj = mgr->rtu_collect_enable;
+       LOG_INFO("lsdisdnfilansf:%d",jj);
+        // ========== 云端启停控制核心逻辑（去重日志优化） ==========
+        if (!mgr->rtu_collect_enable)
         {
-            LOG_ERROR("RTU:重连失败,5秒后继续重试\n");
-            sleep(5);
+            // 仅【状态从开启→关闭】瞬间执行一次释放+日志
+            if (last_collect_state == 1)
+            {
+                // 采集关闭：主动释放串口资源，防止句柄泄漏
+                if (mgr->rtu_ctx != NULL)
+                {
+                    modbus_close(mgr->rtu_ctx);
+                    modbus_free(mgr->rtu_ctx);
+                    mgr->rtu_ctx = NULL;
+                }
+                LOG_INFO("RTU:云端指令关闭采集，已释放串口资源\n");
+                last_collect_state = 0;
+            }
+
+            // 低功耗休眠，避免空转耗CPU
+            sleep(2);
             continue;
         }
-        for (int i = 0; i < 2; i++) {
+
+        // 仅【状态从关闭→开启】打印启动日志
+        if (last_collect_state == 0)
+        {
+            LOG_INFO("RTU:云端指令开启采集，恢复正常采集任务\n");
+            last_collect_state = 1;
+        }
+
+        // ========== 采集开启：正常执行原有重试+采集逻辑 ==========
+        if (modbus_rtu_robust_read(&mgr->rtu_ctx, 0, 2, mgr->rtu_data) == -1)
+        {
+            LOG_ERROR("RTU:所有热重试失败，60s冷休眠后重试\n");
+            sleep(60);
+            continue;
+        }
+
+        // 打印采集数据
+        for (int i = 0; i < 2; i++)
+        {
             LOG_INFO("RTU_DATA[%d] = %d\n", i, mgr->rtu_data[i]);
         }
+
+        // 加锁安全上报CAN总线
         pthread_mutex_lock(&mgr->bus_mutex);
-        my_can_send(0x123, 2, mgr->rtu_data);
+        if (my_can_send(0x123, 2, mgr->rtu_data) != 0)
+        {
+            LOG_WARN("RTU:CAN数据发送失败\n");
+        }
         pthread_mutex_unlock(&mgr->bus_mutex);
+
+        // 正常1s采集周期
         sleep(1);
     }
+
+    LOG_INFO("RTU采集线程全局退出\n");
     return NULL;
 }
 
@@ -157,27 +185,31 @@ void *MQTT_pthread(void *arg) {
 
 // ====================== 主函数 ======================
 int main(void) {
-    // 1. 注册全局终极清理（工业级核心保障）
+  
+
+    // rtu初始化随机种子
+    srand((unsigned)time(NULL));
+    // 注册全局终极清理
     atexit(gateway_cleanup);
 
-    // 2. 初始化网关总管（所有资源统一初始化）
-    gateway_manager_init(&g_mgr);
+    // 初始化全局mgr资源
+    gateway_manager_init(&mgr);
 
-    // 3. 加载配置
+    // 加载配置
     config_set_default(&cfg);
     config_load("./gateway.conf", &cfg);
     printf("Modbus port: %s\n", cfg.modbus_port);
     printf("can port: %s\n", cfg.can_interface);
 
-    // 4. 底层外设初始化
+    // 底层外设初始化
     mqtt_Init();
     can_Init();
 
-    // 5. 创建线程：统一传递管理器指针（彻底告别全局变量）
-    pthread_create(&g_mgr.threads[0], NULL, modbus_rtu_read, &g_mgr);
-    pthread_create(&g_mgr.threads[1], NULL, modbus_tcp_read, &g_mgr);
-    pthread_create(&g_mgr.threads[2], NULL, can_receive_pthread, &g_mgr);
-    pthread_create(&g_mgr.threads[3], NULL, MQTT_pthread, &g_mgr);
+    // 线程统一传全局mgr地址，全工程完全统一
+    pthread_create(&mgr.threads[0], NULL, modbus_rtu_read, &mgr);
+    pthread_create(&mgr.threads[1], NULL, modbus_tcp_read, &mgr);
+    pthread_create(&mgr.threads[2], NULL, can_receive_pthread, &mgr);
+    pthread_create(&mgr.threads[3], NULL, MQTT_pthread, &mgr);
 
     // 主线程循环
     while(1)
