@@ -30,6 +30,7 @@ static void gateway_manager_init(gateway_manager_t *mgr)
        // 开启运行开关
     mgr->running = ture;
     mgr->rtu_collect_enable=1;
+    mgr->tcp_collect_enable=1;
     // 初始化默认寄存器数据
     mgr->regs[0] = 1;
     mgr->regs[1] = 2;
@@ -61,27 +62,76 @@ void gateway_cleanup(void)
     LOG_INFO("【工业清理】所有资源释放完成，零泄漏！");
 }
 
-// ====================== 所有线程函数（统一全局mgr） ======================
- void *modbus_tcp_read(void *arg) {
+void *modbus_tcp_read(void *arg)
+{
     gateway_manager_t *mgr = (gateway_manager_t *)arg;
-    while (mgr->running) {
-        if (modbus_robust_read(&mgr->tcp_ctx, 0, 10, mgr->regs) == -1) {
-            printf("TCP:重连失败，5秒后继续重试\n");
-            sleep(5);
+    // 记录上一次采集状态，用于去重日志
+    int last_collect_state = mgr->tcp_collect_enable;
+
+    // 线程永久常驻，仅受全局running标记控制
+    while (mgr->running)
+    {
+        int jj = mgr->tcp_collect_enable;
+        LOG_INFO("TCP采集开关状态:%d",jj);
+        // ========== 云端启停控制核心逻辑（与RTU完全对称） ==========
+        if (!mgr->tcp_collect_enable)
+        {
+            // 仅【状态从开启→关闭】瞬间执行一次释放+日志
+            if (last_collect_state == 1)
+            {
+                // 采集关闭：主动释放TCP套接字，防止TIME_WAIT/端口泄漏
+                if (mgr->tcp_ctx != NULL)
+                {
+                    modbus_close(mgr->tcp_ctx);
+                    modbus_free(mgr->tcp_ctx);
+                    mgr->tcp_ctx = NULL;
+                }
+                LOG_INFO("TCP:云端指令关闭采集，已释放网络连接资源");
+                last_collect_state = 0;
+            }
+
+            // 低功耗休眠，避免空转耗CPU
+            sleep(2);
             continue;
         }
 
-        for (int i = 0; i < 2; i++) {
-            printf("reg[%d] = %d\n", i, mgr->regs[i]);
+        // 仅【状态从关闭→开启】打印启动日志
+        if (last_collect_state == 0)
+        {
+            LOG_INFO("TCP:云端指令开启采集，恢复正常采集任务");
+            last_collect_state = 1;
         }
-        //pthread_mutex_lock(&mgr->bus_mutex);
-        my_can_send(0x123, 2, mgr->regs);
-      // pthread_mutex_unlock(&mgr->bus_mutex);
 
+        // ========== 采集开启：正常执行工业级重试+采集逻辑 ==========
+        if (modbus_robust_read(&mgr->tcp_ctx, 0, 10, mgr->regs) == -1)
+        {
+            LOG_ERROR("TCP:所有热重试失败，60s冷休眠后重试");
+            sleep(60);
+            continue;
+        }
+
+        // 打印采集数据
+        for (int i = 0; i < 2; i++)
+        {
+            LOG_INFO("TCP_REG[%d] = %d", i, mgr->regs[i]);
+        }
+
+        // 加锁安全上报CAN总线（和RTU共用总线锁，防止总线冲突）
+        pthread_mutex_lock(&mgr->bus_mutex);
+        if (my_can_send(0x123, 2, mgr->regs) != 0)
+        {
+            LOG_WARN("TCP:CAN数据发送失败");
+        }
+        pthread_mutex_unlock(&mgr->bus_mutex);
+
+        // 正常1s采集周期
         sleep(1);
     }
+
+    LOG_INFO("TCP采集线程全局退出");
     return NULL;
 }
+
 
 void *modbus_rtu_read(void *arg)
 {

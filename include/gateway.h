@@ -40,6 +40,7 @@ typedef struct {
     
     // rtu云端控制线程采集 1=开启采集  0=关闭采集
     int rtu_collect_enable; 
+    int tcp_collect_enable;
 } gateway_manager_t;
 
 // 全局唯一网关实例（所有文件共用）
