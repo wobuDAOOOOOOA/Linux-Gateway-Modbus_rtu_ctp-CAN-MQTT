@@ -26,6 +26,8 @@ int mqtt_Init(void);
 int mqtt_publish_data(float temperature, float humidity);
 void mqtt_disconnect_and_cleanup(void);
 int MQTT_publish(float temperature, float humidity);
+int mqtt_publish_TCP_alarm(const char *Modbus_TCP_alarm_type, const char *Modbus_TCP_alarm_module, const char *Modbus_TCP_alarm_msg);
+int mqtt_publish_RTU_alarm(const char *Modbus_RTU_alarm_type, const char *Modbus_RTU_alarm_module, const char *Modbus_RTU_alarm_msg);
 
 // MQTT下行消息回调
 void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosquitto_message *msg);

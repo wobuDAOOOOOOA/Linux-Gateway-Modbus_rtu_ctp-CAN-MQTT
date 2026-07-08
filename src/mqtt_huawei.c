@@ -84,6 +84,10 @@ void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosqu
     }
 }
 
+
+
+
+
 // ====================== 你原有全部上报函数（完全未改动） ======================
 int mqtt_publish_data(float temperature, float humidity) {
     char payload[256];
@@ -104,6 +108,73 @@ int mqtt_publish_data(float temperature, float humidity) {
     printf("成功: 已上报数据 - 温度: %.1f, 湿度: %.1f\n", temperature, humidity);
     return 0;
 }
+#include <time.h>
+
+// ====================== 告警事件上报 ======================
+int mqtt_publish_TCP_alarm(const char *Modbus_TCP_alarm_type, const char *Modbus_TCP_alarm_module, const char *Modbus_TCP_alarm_msg) {
+    char payload[512];
+    int ret;
+
+    if (!g_mosq) {
+        fprintf(stderr, "错误: MQTT客户端未初始化\n");
+        return -1;
+    }
+
+    time_t now = time(NULL);
+    char Modbus_TCP_alarm_time[32];
+    strftime(Modbus_TCP_alarm_time, sizeof(Modbus_TCP_alarm_time), "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+    snprintf(payload, sizeof(payload),
+        "{\"services\":[{\"service_id\":\"%s\",\"properties\":{"
+        "\"Modbus_TCP_alarm_type\":\"%s\","
+        "\"Modbus_TCP_alarm_module\":\"%s\","
+        "\"Modbus_TCP_alarm_msg\":\"%s\","
+        "\"Modbus_TCP_alarm_time\":\"%s\"}}]}",
+        SERVICE_ID, Modbus_TCP_alarm_type, Modbus_TCP_alarm_module, Modbus_TCP_alarm_msg, Modbus_TCP_alarm_time);
+
+    ret = mosquitto_publish(g_mosq, NULL, cfg.mqtt_topic, strlen(payload), payload, 1, false);
+    if (ret != MOSQ_ERR_SUCCESS) {
+        fprintf(stderr, "错误: 告警上报失败，错误码: %d\n", ret);
+        return -1;
+    }
+
+    printf("成功: 已上报告警 - 类型: %s, 模块: %s, 时间: %s, 详情: %s\n", 
+           Modbus_TCP_alarm_type, Modbus_TCP_alarm_module, Modbus_TCP_alarm_time, Modbus_TCP_alarm_msg);
+    return 0;
+}
+// ====================== 告警事件上报 ======================
+int mqtt_publish_RTU_alarm(const char *Modbus_RTU_alarm_type, const char *Modbus_RTU_alarm_module, const char *Modbus_RTU_alarm_msg) {
+    char payload[512];
+    int ret;
+
+    if (!g_mosq) {
+        fprintf(stderr, "错误: MQTT客户端未初始化\n");
+        return -1;
+    }
+
+    time_t now = time(NULL);
+    char Modbus_RTU_alarm_time[32];
+    strftime(Modbus_RTU_alarm_time, sizeof(Modbus_RTU_alarm_time), "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+    snprintf(payload, sizeof(payload),
+        "{\"services\":[{\"service_id\":\"%s\",\"properties\":{"
+        "\"Modbus_RTU_alarm_type\":\"%s\","
+        "\"Modbus_RTU_alarm_module\":\"%s\","
+        "\"Modbus_RTU_alarm_msg\":\"%s\","
+        "\"Modbus_RTU_alarm_time\":\"%s\"}}]}",
+        SERVICE_ID, Modbus_RTU_alarm_type, Modbus_RTU_alarm_module, Modbus_RTU_alarm_msg, Modbus_RTU_alarm_time);
+
+    ret = mosquitto_publish(g_mosq, NULL, cfg.mqtt_topic, strlen(payload), payload, 1, false);
+    if (ret != MOSQ_ERR_SUCCESS) {
+        fprintf(stderr, "错误: 告警上报失败，错误码: %d\n", ret);
+        return -1;
+    }
+
+    printf("成功: 已上报告警 - 类型: %s, 模块: %s, 时间: %s, 详情: %s\n", 
+           Modbus_RTU_alarm_type, Modbus_RTU_alarm_module, Modbus_RTU_alarm_time, Modbus_RTU_alarm_msg);
+    return 0;
+}
+
 
 void mqtt_disconnect_and_cleanup() {
     if (g_mosq) {
@@ -151,6 +222,9 @@ void mqtt_send_command_response(const char *request_id, int result_code, const c
         fprintf(stderr, "命令响应发送失败，错误码: %d\n", ret);
     }
 }
+
+
+
 
 int mqtt_Init()
 {

@@ -67,6 +67,7 @@ void *modbus_tcp_read(void *arg)
     gateway_manager_t *mgr = (gateway_manager_t *)arg;
     // 记录上一次采集状态，用于去重日志
     int last_collect_state = mgr->tcp_collect_enable;
+static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
 
     // 线程永久常驻，仅受全局running标记控制
     while (mgr->running)
@@ -88,13 +89,14 @@ void *modbus_tcp_read(void *arg)
                 }
                 LOG_INFO("TCP:云端指令关闭采集，已释放网络连接资源");
                 last_collect_state = 0;
+             mqtt_publish_TCP_alarm("TCP采集未开启", "TCP采集未开启", "TCP采集未开启");
             }
 
             // 低功耗休眠，避免空转耗CPU
             sleep(2);
             continue;
         }
-
+        
         // 仅【状态从关闭→开启】打印启动日志
         if (last_collect_state == 0)
         {
@@ -106,6 +108,16 @@ void *modbus_tcp_read(void *arg)
         if (modbus_robust_read(&mgr->tcp_ctx, 0, 10, mgr->regs) == -1)
         {
             LOG_ERROR("TCP:所有热重试失败，60s冷休眠后重试");
+// 重连失败达到MAX_RETRY时：
+if (first_fail_time_tcp == 0) {
+    first_fail_time_tcp = time(NULL);
+    char time_str[32];
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&first_fail_time_tcp));
+    char alarm_msg[128];
+    snprintf(alarm_msg, sizeof(alarm_msg), "重连失败，首次故障时间: %s", time_str);
+    mqtt_publish_TCP_alarm("tcp_offline", "tcp采集掉线", alarm_msg);
+}
+    
             sleep(60);
             continue;
         }
@@ -115,9 +127,11 @@ void *modbus_tcp_read(void *arg)
         {
             LOG_INFO("TCP_REG[%d] = %d", i, mgr->regs[i]);
         }
+        //TCP正常运行中
+           mqtt_publish_TCP_alarm("tcp_running", "tcp_running", "tcp采集运行中");
 
         // 加锁安全上报CAN总线（和RTU共用总线锁，防止总线冲突）
-        pthread_mutex_lock(&mgr->bus_mutex);
+    pthread_mutex_lock(&mgr->bus_mutex);   
         if (my_can_send(0x123, 2, mgr->regs) != 0)
         {
             LOG_WARN("TCP:CAN数据发送失败");
@@ -138,6 +152,7 @@ void *modbus_rtu_read(void *arg)
     gateway_manager_t *mgr = (gateway_manager_t *)arg;
     // 记录上一次采集状态，用于去重日志
     int last_collect_state = mgr->rtu_collect_enable;
+static time_t first_fail_time_rtu = 0;  // 首次故障时间戳
 
     // 线程永久常驻，仅受全局running标记控制
     while (mgr->running)
@@ -160,8 +175,8 @@ void *modbus_rtu_read(void *arg)
                 LOG_INFO("RTU:云端指令关闭采集，已释放串口资源\n");
                 last_collect_state = 0;
             }
-
-            // 低功耗休眠，避免空转耗CPU
+          mqtt_publish_RTU_alarm("RTU采集未开启", "RTU采集未开启", "RTU采集未开启");
+ // 低功耗休眠，避免空转耗CPU
             sleep(2);
             continue;
         }
@@ -177,6 +192,17 @@ void *modbus_rtu_read(void *arg)
         if (modbus_rtu_robust_read(&mgr->rtu_ctx, 0, 2, mgr->rtu_data) == -1)
         {
             LOG_ERROR("RTU:所有热重试失败，60s冷休眠后重试\n");
+// 重连失败达到MAX_RETRY时：
+if (first_fail_time_rtu == 0) {
+    first_fail_time_rtu = time(NULL);
+    char time_str[32];
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&first_fail_time_rtu));
+    char alarm_msg[128];
+    snprintf(alarm_msg, sizeof(alarm_msg), "重连失败，首次故障时间: %s", time_str);
+    mqtt_publish_RTU_alarm("rtu_offline", "RTU采集掉线", alarm_msg);
+}
+
+
             sleep(60);
             continue;
         }
@@ -186,7 +212,7 @@ void *modbus_rtu_read(void *arg)
         {
             LOG_INFO("RTU_DATA[%d] = %d\n", i, mgr->rtu_data[i]);
         }
-
+        mqtt_publish_RTU_alarm("rtu_running", "rtu_running", "rtu采集运行中");
         // 加锁安全上报CAN总线
         pthread_mutex_lock(&mgr->bus_mutex);
         if (my_can_send(0x123, 2, mgr->rtu_data) != 0)
