@@ -1,0 +1,2 @@
+/home/wdz/test_drv/bmp280_drv.o
+

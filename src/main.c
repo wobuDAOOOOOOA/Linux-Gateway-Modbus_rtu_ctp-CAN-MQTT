@@ -13,7 +13,8 @@
 #include <sys/socket.h>
 #include"config.h"
 #include"gateway.h"
-
+#include"relay.h"
+#include"bmp280.h"
 #define ture 1
 int jj;
 
@@ -72,8 +73,10 @@ static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
     // 线程永久常驻，仅受全局running标记控制
     while (mgr->running)
     {
+
         int jj = mgr->tcp_collect_enable;
         LOG_INFO("TCP采集开关状态:%d",jj);
+
         // ========== 云端启停控制核心逻辑（与RTU完全对称） ==========
         if (!mgr->tcp_collect_enable)
         {
@@ -157,6 +160,7 @@ static time_t first_fail_time_rtu = 0;  // 首次故障时间戳
     // 线程永久常驻，仅受全局running标记控制
     while (mgr->running)
     {
+
        jj = mgr->rtu_collect_enable;
        LOG_INFO("lsdisdnfilansf:%d",jj);
         // ========== 云端启停控制核心逻辑（去重日志优化） ==========
@@ -214,6 +218,7 @@ if (first_fail_time_rtu == 0) {
         }
         mqtt_publish_RTU_alarm("rtu_running", "rtu_running", "rtu采集运行中");
         // 加锁安全上报CAN总线
+
         pthread_mutex_lock(&mgr->bus_mutex);
         if (my_can_send(0x123, 2, mgr->rtu_data) != 0)
         {
@@ -251,8 +256,9 @@ void *can_receive_pthread(void *arg) {
 void *MQTT_pthread(void *arg) {
     gateway_manager_t *mgr = (gateway_manager_t *)arg;
     while (mgr->running) {
+        mgr->press = BMP280_READ();
         pthread_mutex_lock(&mgr->bus_mutex);
-        MQTT_publish(mgr->latest_temperature, mgr->latest_humidity);
+        MQTT_publish(mgr->latest_temperature, mgr->latest_humidity ,mgr->press);
         pthread_mutex_unlock(&mgr->bus_mutex);
         sleep(1);
     }
@@ -262,6 +268,19 @@ void *MQTT_pthread(void *arg) {
 // ====================== 主函数 ======================
 int main(void) {
   
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     // rtu初始化随机种子
     srand((unsigned)time(NULL));
@@ -280,7 +299,8 @@ int main(void) {
     // 底层外设初始化
     mqtt_Init();
     can_Init();
-
+modbus_tcp_relay_init();
+BMP280_READ_Init();
     // 线程统一传全局mgr地址，全工程完全统一
     pthread_create(&mgr.threads[0], NULL, modbus_rtu_read, &mgr);
     pthread_create(&mgr.threads[1], NULL, modbus_tcp_read, &mgr);

@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../gateway"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {}
+}

@@ -50,6 +50,7 @@ void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosqu
         mgr.rtu_collect_enable = 1;
         printf("【MQTT下发】开启RTU采集成功！\n");
         printf("【MQTT下发】开启RTU采集成功！xxxxxxxxxxxxx:%d\n",mgr.rtu_collect_enable);
+        modbus_relay_off(0);
            mqtt_send_command_response(request_id, 0, NULL);
 
     }
@@ -59,6 +60,7 @@ void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosqu
         mgr.rtu_collect_enable = 0;
         printf("【MQTT下发】关闭RTU采集成功！\n");
         printf("【MQTT下发】关闭RTU采集成功！xxxxxxxxxxxxx:%d\n",mgr.rtu_collect_enable);
+        modbus_relay_on(0);
                    mqtt_send_command_response(request_id, 0, NULL);
 
     }
@@ -89,7 +91,8 @@ void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosqu
 
 
 // ====================== 你原有全部上报函数（完全未改动） ======================
-int mqtt_publish_data(float temperature, float humidity) {
+int mqtt_publish_data(float temperature, float humidity , float press)
+ {
     char payload[256];
     int ret;
  
@@ -98,14 +101,14 @@ int mqtt_publish_data(float temperature, float humidity) {
         return -1;
     }
 
-    snprintf(payload, sizeof(payload), PAYLOAD_TEMPLATE, SERVICE_ID, PROP_TEMP, temperature, PROP_HUM, humidity);
+    snprintf(payload, sizeof(payload), PAYLOAD_TEMPLATE, SERVICE_ID, PROP_TEMP, temperature, PROP_HUM, humidity ,PROP_PRESS,press);
     ret = mosquitto_publish(g_mosq, NULL, cfg.mqtt_topic, strlen(payload), payload, 1, false);
     if (ret != MOSQ_ERR_SUCCESS) {
         fprintf(stderr, "错误: 数据发布失败，错误码: %d\n", ret);
         return -1;
     }
     
-    printf("成功: 已上报数据 - 温度: %.1f, 湿度: %.1f\n", temperature, humidity);
+    printf("成功: 已上报数据 - 温度: %.1f, 湿度: %.1f, 大气压: %.1f\n", temperature, humidity, press);
     return 0;
 }
 #include <time.h>
@@ -277,11 +280,11 @@ int mqtt_Init()
 }
     
 
-int MQTT_publish(float temperature, float humidity) {
+int MQTT_publish(float temperature, float humidity ,float press) {
     if (!g_mosq) {
         printf("MQTT not connected, skip publish\n");
         return -1;
     }
-    mqtt_publish_data(temperature, humidity);
+    mqtt_publish_data(temperature, humidity ,press);
     return 0;
 }

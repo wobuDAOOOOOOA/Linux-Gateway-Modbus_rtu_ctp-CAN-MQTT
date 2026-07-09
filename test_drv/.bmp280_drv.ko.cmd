@@ -1,0 +1,1 @@
+cmd_/home/wdz/test_drv/bmp280_drv.ko := arm-rockchip830-linux-uclibcgnueabihf-ld -r -EL -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/wdz/test_drv/bmp280_drv.ko /home/wdz/test_drv/bmp280_drv.o /home/wdz/test_drv/bmp280_drv.mod.o;  true
