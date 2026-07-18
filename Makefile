@@ -15,8 +15,9 @@ SRCS = $(SRC_DIR)/main.c \
        $(SRC_DIR)/mqtt_huawei.c \
        $(SRC_DIR)/config.c \
        $(SRC_DIR)/relay.c  \
-       $(SRC_DIR)/bmp280.c 
-      # $(SRC_DIR)/log.c
+       $(SRC_DIR)/bmp280.c \
+       $(SRC_DIR)/data_cache.c \
+       #$(SRC_DIR)/log.c
 
 
 # 输出

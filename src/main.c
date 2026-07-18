@@ -15,8 +15,8 @@
 #include"gateway.h"
 #include"relay.h"
 #include"bmp280.h"
+#include"data_cache.h"
 #define ture 1
-int jj;
 
   // 全局唯一实体定义（全工程仅此一处）
     gateway_manager_t mgr;
@@ -40,7 +40,7 @@ static void gateway_manager_init(gateway_manager_t *mgr)
 // ====================== 工业级终极清理函数 ======================
 void gateway_cleanup(void)
 {
-    LOG_INFO("【工业清理】执行网关全资源释放...");
+    LOG_INFO("执行网关全资源释放...");
 
     // 直接操作全局mgr，去掉多余临时指针
     if (mgr.tcp_ctx) {
@@ -60,14 +60,14 @@ void gateway_cleanup(void)
     pthread_mutex_destroy(&mgr.data_mutex);
     pthread_mutex_destroy(&mgr.bus_mutex);
 
-    LOG_INFO("【工业清理】所有资源释放完成，零泄漏！");
+    LOG_INFO("所有资源释放完成！");
 }
 
 void *modbus_tcp_read(void *arg)
 {
-    gateway_manager_t *mgr = (gateway_manager_t *)arg;
+gateway_manager_t *mgr = (gateway_manager_t *)arg;
     // 记录上一次采集状态，用于去重日志
-    int last_collect_state = mgr->tcp_collect_enable;
+int last_collect_state = mgr->tcp_collect_enable;
 static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
 
     // 线程永久常驻，仅受全局running标记控制
@@ -92,7 +92,7 @@ static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
                 }
                 LOG_INFO("TCP:云端指令关闭采集，已释放网络连接资源");
                 last_collect_state = 0;
-             mqtt_publish_TCP_alarm("TCP采集未开启", "TCP采集未开启", "TCP采集未开启");
+                mqtt_publish_TCP_alarm("TCP采集未开启", "TCP采集未开启", "TCP采集未开启");
             }
 
             // 低功耗休眠，避免空转耗CPU
@@ -112,7 +112,8 @@ static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
         {
             LOG_ERROR("TCP:所有热重试失败，60s冷休眠后重试");
 // 重连失败达到MAX_RETRY时：
-if (first_fail_time_tcp == 0) {
+if (first_fail_time_tcp == 0) 
+{
     first_fail_time_tcp = time(NULL);
     char time_str[32];
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&first_fail_time_tcp));
@@ -134,8 +135,8 @@ if (first_fail_time_tcp == 0) {
            mqtt_publish_TCP_alarm("tcp_running", "tcp_running", "tcp采集运行中");
 
         // 加锁安全上报CAN总线（和RTU共用总线锁，防止总线冲突）
-    pthread_mutex_lock(&mgr->bus_mutex);   
-        if (my_can_send(0x123, 2, mgr->regs) != 0)
+        pthread_mutex_lock(&mgr->bus_mutex);   
+        if (can_send(0x123, 2, mgr->regs) != 0)
         {
             LOG_WARN("TCP:CAN数据发送失败");
         }
@@ -152,17 +153,15 @@ if (first_fail_time_tcp == 0) {
 
 void *modbus_rtu_read(void *arg)
 {
-    gateway_manager_t *mgr = (gateway_manager_t *)arg;
+gateway_manager_t *mgr = (gateway_manager_t *)arg;
     // 记录上一次采集状态，用于去重日志
-    int last_collect_state = mgr->rtu_collect_enable;
+int last_collect_state = mgr->rtu_collect_enable;
 static time_t first_fail_time_rtu = 0;  // 首次故障时间戳
 
     // 线程永久常驻，仅受全局running标记控制
     while (mgr->running)
     {
 
-       jj = mgr->rtu_collect_enable;
-       LOG_INFO("lsdisdnfilansf:%d",jj);
         // ========== 云端启停控制核心逻辑（去重日志优化） ==========
         if (!mgr->rtu_collect_enable)
         {
@@ -216,11 +215,11 @@ if (first_fail_time_rtu == 0) {
         {
             LOG_INFO("RTU_DATA[%d] = %d\n", i, mgr->rtu_data[i]);
         }
+
         mqtt_publish_RTU_alarm("rtu_running", "rtu_running", "rtu采集运行中");
-        // 加锁安全上报CAN总线
 
         pthread_mutex_lock(&mgr->bus_mutex);
-        if (my_can_send(0x123, 2, mgr->rtu_data) != 0)
+        if (can_send(0x123, 2, mgr->rtu_data) != 0)
         {
             LOG_WARN("RTU:CAN数据发送失败\n");
         }
@@ -257,9 +256,19 @@ void *MQTT_pthread(void *arg) {
     gateway_manager_t *mgr = (gateway_manager_t *)arg;
     while (mgr->running) {
         mgr->press = BMP280_READ();
+        if(mqtt_is_connected())
+        {
+        data_cache_flush();
         pthread_mutex_lock(&mgr->bus_mutex);
         MQTT_publish(mgr->latest_temperature, mgr->latest_humidity ,mgr->press);
         pthread_mutex_unlock(&mgr->bus_mutex);
+        }
+        else{
+    // MQTT离线：数据存入缓存（包含大气压）
+        data_cache_push_telemetry(mgr->latest_temperature, mgr->latest_humidity, mgr->press);
+        printf("【缓存】MQTT离线，数据已缓存\n");
+            }
+      
         sleep(1);
     }
     return NULL;
@@ -299,8 +308,9 @@ int main(void) {
     // 底层外设初始化
     mqtt_Init();
     can_Init();
-modbus_tcp_relay_init();
-BMP280_READ_Init();
+    modbus_relay_init();
+    BMP280_READ_Init();
+    data_cache_init();
     // 线程统一传全局mgr地址，全工程完全统一
     pthread_create(&mgr.threads[0], NULL, modbus_rtu_read, &mgr);
     pthread_create(&mgr.threads[1], NULL, modbus_tcp_read, &mgr);

@@ -307,4 +307,4 @@ module_i2c_driver(bmp280_i2c_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Study");
-MODULE_DESCRIPTION("BMP280 I2C Driver (Standard Framework Same As AHT20)");
+MODULE_DESCRIPTION("BMP280 I2C Driver");

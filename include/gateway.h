@@ -20,8 +20,6 @@ typedef struct {
     // 通信句柄
     modbus_t *rtu_ctx;
     modbus_t *tcp_ctx;
-    modbus_t *relay_ctx;
-
 
     // 同步互斥锁
     pthread_mutex_t data_mutex;

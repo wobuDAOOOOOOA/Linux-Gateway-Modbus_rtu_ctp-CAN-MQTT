@@ -6,12 +6,14 @@
 #include<string.h>
 #include"log.h"
 #include"config.h"
+#include "gateway.h"
 
 // 与RTU完全统一参数，双协议架构一致
 #define TCP_MAX_RETRY     3
 #define TCP_BASE_DELAY   5
 
 extern gateway_config_t cfg;
+extern gateway_manager_t mgr;
 
 modbus_t* modbus_tcp_bconnect(void)
 {
@@ -107,3 +109,4 @@ int modbus_robust_read(modbus_t **ctx, int addr, int nb, uint16_t *dest)
     LOG_ERROR("TCP:所有重试耗尽，进入冷休眠状态");
     return -1;
 }
+
