@@ -41,6 +41,21 @@ typedef struct {
     // rtu云端控制线程采集 1=开启采集  0=关闭采集
     int rtu_collect_enable; 
     int tcp_collect_enable;
+
+      // ★★★ 新增：各模块状态（供MQTT线程读取上报） ★★★
+    int rtu_status;      // 0=正常, 1=采集关闭, 2=离线故障
+    int tcp_status;      // 0=正常, 1=采集关闭, 2=离线故障
+    int can_status;      // 0=正常, 1=故障
+
+    _Bool mqtt_connect_states;
+    
+    time_t rtu_fail_time;
+    time_t tcp_fail_time;
+    time_t can_fail_time;
+
+    char rtu_alarm_msg[128];
+    char tcp_alarm_msg[128];
+    char can_alarm_msg[128];
 } gateway_manager_t;
 
 // 全局唯一网关实例（所有文件共用）
