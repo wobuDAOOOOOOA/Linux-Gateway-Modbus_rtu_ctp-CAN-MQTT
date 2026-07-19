@@ -17,10 +17,10 @@ typedef struct {
     // MQTT配置
     char mqtt_broker[64];
     int  mqtt_port;
-    char mqtt_topic[128];
-    char mqtt_client_id[32];
-    char mqtt_username[128];
-    char mqtt_password[128];
+    char mqtt_topic[256];
+    char mqtt_client_id[64];
+    char mqtt_username[256];
+    char mqtt_password[256];
 
     // ★★★ 继电器配置（新增） ★★★
     char relay_ip[64];       // 继电器IP地址

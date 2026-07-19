@@ -8,8 +8,8 @@
 #include "relay.h"
 // 华为云设备固定参数
 #define MQTT_USERNAME   "69fe6602cbb0cf6bb958fad5_TempHumi"
-#define MQTT_PASSWORD   "4897317957bb35698971f91ad52af3a6abedb507fcd044fa1749ff24b43de744"
-#define MQTT_CLIENT_ID  "69fe6602cbb0cf6bb958fad5_TempHumi_0_0_2026070207"
+#define MQTT_PASSWORD   "cf059d90b349820ece3aa4487f92cd846758b82f5d4434fc078d117469b0364f"
+#define MQTT_CLIENT_ID  "69fe6602cbb0cf6bb958fad5_TempHumi_0_0_2026070207"  //todo 这样到时候要改客户端id到配置里面
 
 // 华为云下行命令订阅主题
 #define MQTT_SUB_CMD_TOPIC  "$oc/devices/+/sys/command/#"
