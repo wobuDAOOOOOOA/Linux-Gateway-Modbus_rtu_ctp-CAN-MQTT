@@ -20,7 +20,13 @@ typedef struct {
     int  slave_id;
     int  timeout_ms;      // 可选，超时时间
     uint16_t regs[32];
-    modbus_t *ctx
+    modbus_t *ctx;
+    int last_reported_status;
+    int status ;
+    char alarm_msg[128];
+    time_t tcp_fail_time;
+    int tcp_collect_enable;
+
 } tcp_device_config_t;
 
 

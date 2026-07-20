@@ -67,7 +67,7 @@ void init_tcp_devices(void)
     // 1. 先把整个数组清空（防止残留垃圾数据）
     //    相当于：把 tcp_devices[0] ~ tcp_devices[3] 全部置零
     memset(mgr.tcp_devices, 0, sizeof(mgr.tcp_devices));
-
+   
     // 2. 从配置文件 cfg 里读取数据，填充数组
     //    比如你配置了 tcp_enable[0]=1, tcp_ip[0]="192.168.1.100" ...
     int count = 0;
@@ -105,7 +105,7 @@ int idx = *(int *)arg;
 
     // 记录上一次采集状态，用于去重日志
     // gateway_manager_t *mgr = &mgr;  // 或者直接用全局 mgr
-             tcp_device_config_t *dev = &mgr.tcp_devices[idx];
+  tcp_device_config_t *dev = &mgr.tcp_devices[idx];
 
 static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
     // ★★★ 添加这一行：声明 dev 变量，指向第一个 TCP 设备 ★★★
@@ -128,17 +128,17 @@ static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
                 // 采集关闭：主动释放TCP套接字，防止TIME_WAIT/端口泄漏
                 if (mgr.tcp_ctx != NULL)
                 {
-                    modbus_close(mgr.tcp_ctx);
-                    modbus_free(mgr.tcp_ctx);
-                    mgr.tcp_ctx = NULL;
+                    modbus_close(dev->ctx);
+                    modbus_free(dev->ctx);
+                    dev->ctx = NULL;
                 }
                 LOG_INFO("TCP:云端指令关闭采集，已释放网络连接资源");
-                last_collect_state = 0;
+                dev->last_reported_status = 0;
                 //mqtt_publish_TCP_alarm("TCP采集未开启", "TCP采集未开启", "TCP采集未开启");
                                 // ★★★ 只记录状态，不发MQTT ★★★
 
-                mgr.tcp_status = 1;  // 采集关闭
-                snprintf(mgr.tcp_alarm_msg, sizeof(mgr.tcp_alarm_msg), "TCP采集已关闭");
+                dev->status = 1;  // 采集关闭
+                snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "TCP采集已关闭");
             }
 
             // 低功耗休眠，避免空转耗CPU
@@ -161,22 +161,22 @@ static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
         {
             LOG_ERROR("TCP:所有热重试失败，60s冷休眠后重试");
             // ★★★ 记录故障状态 ★★★
-            mgr.tcp_status = 2;  // 离线故障
-            if (mgr.tcp_fail_time == 0) {
-                mgr.tcp_fail_time = time(NULL);
+            dev->status = 2;  // 离线故障
+            if (dev->tcp_fail_time == 0) {
+               dev->tcp_fail_time = time(NULL);
                 char time_str[32];
-                strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&mgr.tcp_fail_time));
-                snprintf(mgr.tcp_alarm_msg, sizeof(mgr.tcp_alarm_msg),
+                strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&dev->tcp_fail_time));
+                snprintf(dev->alarm_msg, sizeof(dev->alarm_msg),
                          "TCP离线，首次故障: %s", time_str);
             }
             sleep(60);
             continue;
         }
    // ★★★ 读取成功：清除故障记录 ★★★
-        if (mgr.tcp_status == 2) {
-            mgr.tcp_status = 0;
-            mgr.tcp_fail_time = 0;
-            snprintf(mgr.tcp_alarm_msg, sizeof(mgr.tcp_alarm_msg), "TCP已恢复");
+        if (dev->status== 2) {
+            dev->status = 0;
+            dev->tcp_fail_time = 0;
+            snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "TCP已恢复");
         }
         // 打印采集数据
         for (int i = 0; i < 2; i++)
@@ -316,49 +316,69 @@ void *can_receive_pthread(void *arg) {
 }
 
 void *MQTT_pthread(void *arg) {
-    gateway_manager_t *mgr = (gateway_manager_t *)arg;
+    int idx = *(int *)arg;
+    free(arg);  // 释放传入的索引内存（可选，但推荐）
     int last_rtu_status = -1, last_tcp_status = -1;
     int last_can_fault = -1;
     int last_can_reconnect_count = -1;  // ★★★ 新增：记录上次重连次数 ★★★
 
-    while (mgr->running) {
-        mgr->press = BMP280_READ();
-        mgr->mqtt_connect_states = mqtt_is_connected();
 
-        if (mgr->mqtt_connect_states) {
+    // 记录上一次采集状态，用于去重日志
+    // gateway_manager_t *mgr = &mgr;  // 或者直接用全局 mgr
+    while (mgr.running) {
+        mgr.press = BMP280_READ();
+        mgr.mqtt_connect_states = mqtt_is_connected();
+
+        if (mgr.mqtt_connect_states) {
             data_cache_flush();
-            pthread_mutex_lock(&mgr->data_mutex);
-            MQTT_publish(mgr->latest_temperature, mgr->latest_humidity, mgr->press);
-            pthread_mutex_unlock(&mgr->data_mutex);
+            pthread_mutex_lock(&mgr.data_mutex);
+            MQTT_publish(mgr.latest_temperature, mgr.latest_humidity, mgr.press);
+            pthread_mutex_unlock(&mgr.data_mutex);
         } else {
-            data_cache_push_telemetry(mgr->latest_temperature, mgr->latest_humidity, mgr->press);
+            data_cache_push_telemetry(mgr.latest_temperature, mgr.latest_humidity, mgr.press);
             printf("【缓存】MQTT离线，数据已缓存\n");
         }
 
         // ===== RTU 状态上报 =====
-        if (mgr->rtu_status != last_rtu_status) {
-            if (mgr->rtu_status == 0) {
+        if (mgr.rtu_status != last_rtu_status) {
+            if (mgr.rtu_status == 0) {
                 mqtt_publish_RTU_alarm("rtu_running", "RTU", "RTU采集运行中");
-            } else if (mgr->rtu_status == 1) {
+            } else if (mgr.rtu_status == 1) {
                 mqtt_publish_RTU_alarm("rtu_stopped", "RTU", "RTU采集已关闭");
-            } else if (mgr->rtu_status == 2) {
-                mqtt_publish_RTU_alarm("rtu_offline", "RTU", mgr->rtu_alarm_msg);
+            } else if (mgr.rtu_status == 2) {
+                mqtt_publish_RTU_alarm("rtu_offline", "RTU", mgr.rtu_alarm_msg);
             }
-            last_rtu_status = mgr->rtu_status;
+            last_rtu_status = mgr.rtu_status;
         }
 
-        // ===== TCP 状态上报 =====
-        if (mgr->tcp_status != last_tcp_status) {
-            if (mgr->tcp_status == 0) {
-                mqtt_publish_TCP_alarm("tcp_running", "TCP", "TCP采集运行中");
-            } else if (mgr->tcp_status == 1) {
-                mqtt_publish_TCP_alarm("tcp_stopped", "TCP", "TCP采集已关闭");
-            } else if (mgr->tcp_status == 2) {
-                mqtt_publish_TCP_alarm("tcp_offline", "TCP", mgr->tcp_alarm_msg);
-            }
-            last_tcp_status = mgr->tcp_status;
+       // ===== TCP 设备状态上报（遍历所有设备） =====
+// for (int i = 0; i < mgr.tcp_device_count; i++) {
+//   tcp_device_config_t *dev = &mgr.tcp_devices[idx];
+//     if (mgr.tcp_status != last_tcp_status) {
+//         if (mgr.tcp_status == 0) {
+//             mqtt_publish_alarm("TCP", i, "running", "TCP", "TCP采集运行中");
+//         } else if (mgr.tcp_status == 1) {
+//             mqtt_publish_alarm("TCP", i, "stopped", "TCP", "TCP采集已关闭");
+//         } else if (mgr.tcp_status == 2) {
+//             mqtt_publish_alarm("TCP", i, "offline", "TCP", mgr.tcp_alarm_msg);
+//         }
+//         last_tcp_status = mgr.tcp_status;
+//     }
+// }
+// ===== TCP 设备状态上报（遍历所有设备） =====
+for (int i = 0; i < mgr.tcp_device_count; i++) {
+    tcp_device_config_t *dev = &mgr.tcp_devices[i];
+    //if (dev->status != dev->last_reported_status) {
+        if (dev->status == 0) {
+            mqtt_publish_alarm("TCP", i, "running", "TCP", "TCP采集运行中");
+        } else if (dev->status == 1) {
+            mqtt_publish_alarm("TCP", i, "stopped", "TCP", "TCP采集已关闭");
+        } else if (dev->status == 2) {
+            mqtt_publish_alarm("TCP", i, "offline", "TCP", dev->alarm_msg);
         }
-
+        dev->last_reported_status = dev->status;
+   // }
+}
         // ===== ★★★ CAN 状态上报（修正版） ★★★ =====
         can_status_t can_status;
         can_get_status(&can_status);
