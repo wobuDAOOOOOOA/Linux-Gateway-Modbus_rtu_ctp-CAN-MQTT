@@ -330,3 +330,60 @@ int mqtt_is_connected(void)
 {
     return mqtt_connected_flag;
 }
+/**
+ * @brief 通用告警上报（支持多设备）
+ * @param device_type  "RTU", "TCP", "CAN"
+ * @param device_index  设备索引（0, 1, 2...）
+ * @param alarm_type    告警类型
+ * @param alarm_module  告警模块
+ * @param alarm_msg     告警消息
+ */
+int mqtt_publish_alarm(const char *device_type, int device_index,
+                       const char *alarm_type, const char *alarm_module,
+                       const char *alarm_msg)
+{
+    char payload[512];
+    char prop_alarm_type[64];
+    char prop_alarm_module[64];
+    char prop_alarm_msg[64];
+    char prop_alarm_time[64];
+    int ret;
+
+    if (!g_mosq) {
+        fprintf(stderr, "错误: MQTT客户端未初始化\n");
+        return -1;
+    }
+
+    time_t now = time(NULL);
+    char alarm_time[32];
+    strftime(alarm_time, sizeof(alarm_time), "%Y-%m-%d %H:%M:%S", localtime(&now));
+
+    // ★★★ 根据设备类型+索引拼装属性名 ★★★
+    // 例如：TCP_0_alarm_type, TCP_1_alarm_type, RTU_0_alarm_type
+    snprintf(prop_alarm_type, sizeof(prop_alarm_type), "%s_%d_alarm_type", device_type, device_index);
+    snprintf(prop_alarm_module, sizeof(prop_alarm_module), "%s_%d_alarm_module", device_type, device_index);
+    snprintf(prop_alarm_msg, sizeof(prop_alarm_msg), "%s_%d_alarm_msg", device_type, device_index);
+    snprintf(prop_alarm_time, sizeof(prop_alarm_time), "%s_%d_alarm_time", device_type, device_index);
+
+    snprintf(payload, sizeof(payload),
+        "{\"services\":[{\"service_id\":\"%s\",\"properties\":{"
+        "\"%s\":\"%s\","
+        "\"%s\":\"%s\","
+        "\"%s\":\"%s\","
+        "\"%s\":\"%s\"}}]}",
+        SERVICE_ID,
+        prop_alarm_type, alarm_type,
+        prop_alarm_module, alarm_module,
+        prop_alarm_msg, alarm_msg,
+        prop_alarm_time, alarm_time);
+
+    ret = mosquitto_publish(g_mosq, NULL, cfg.mqtt_topic, strlen(payload), payload, 1, false);
+    if (ret != MOSQ_ERR_SUCCESS) {
+        fprintf(stderr, "错误: 告警上报失败，错误码: %d\n", ret);
+        return -1;
+    }
+
+    printf("成功: 已上报告警 [%s_%d] - 类型: %s, 模块: %s, 时间: %s\n",
+           device_type, device_index, alarm_type, alarm_module, alarm_time);
+    return 0;
+}

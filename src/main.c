@@ -62,41 +62,83 @@ void gateway_cleanup(void)
 
     LOG_INFO("所有资源释放完成！");
 }
-
-void *modbus_tcp_read(void *arg)
+void init_tcp_devices(void)
 {
-gateway_manager_t *mgr = (gateway_manager_t *)arg;
+    // 1. 先把整个数组清空（防止残留垃圾数据）
+    //    相当于：把 tcp_devices[0] ~ tcp_devices[3] 全部置零
+    memset(mgr.tcp_devices, 0, sizeof(mgr.tcp_devices));
+
+    // 2. 从配置文件 cfg 里读取数据，填充数组
+    //    比如你配置了 tcp_enable[0]=1, tcp_ip[0]="192.168.1.100" ...
+    int count = 0;
+
+    for (int i = 0; i < MAX_TCP_DEVICES; i++) {
+        // 如果配置里这个设备是禁用状态，就跳过
+        if (cfg.tcp_enable[i] == 0) {
+            continue;
+        }
+
+        // ★★★ 核心：取数组元素 ★★★
+        // tcp_devices[count] 就是第 count 个设备
+        // 用 & 取地址，用 -> 访问结构体成员
+        tcp_device_config_t *dev = &mgr.tcp_devices[count];
+
+        // 3. 把配置拷贝到数组元素里
+        strcpy(dev->ip, cfg.tcp_ip[i]);
+        dev->port = cfg.tcp_port[i];
+        dev->slave_id = cfg.tcp_slave_id[i];
+        dev->timeout_ms = 500;
+        dev->ctx = NULL;      // 连接句柄先设为空，读函数会自动创建
+
+        // 4. 计数加1，指向下一个数组位置
+        count++;
+    }
+
+    // 5. 记录实际启用的设备数量
+    mgr.tcp_device_count = count;
+}
+
+void *modbus_tcp_read_generic(void *arg)
+{
+int idx = *(int *)arg;
+    free(arg);  // 释放传入的索引内存（可选，但推荐）
+
     // 记录上一次采集状态，用于去重日志
-int last_collect_state = mgr->tcp_collect_enable;
+    // gateway_manager_t *mgr = &mgr;  // 或者直接用全局 mgr
+             tcp_device_config_t *dev = &mgr.tcp_devices[idx];
+
 static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
+    // ★★★ 添加这一行：声明 dev 变量，指向第一个 TCP 设备 ★★★
 
     // 线程永久常驻，仅受全局running标记控制
-    while (mgr->running)
+    int last_collect_state = mgr.tcp_collect_enable;
+
+    while (mgr.running)
     {
 
-        int jj = mgr->tcp_collect_enable;
+        int jj = mgr.tcp_collect_enable;
         LOG_INFO("TCP采集开关状态:%d",jj);
 
         // ========== 云端启停控制核心逻辑（与RTU完全对称） ==========
-        if (!mgr->tcp_collect_enable)
+        if (!mgr.tcp_collect_enable)
         {
             // 仅【状态从开启→关闭】瞬间执行一次释放+日志
             if (last_collect_state == 1)
             {
                 // 采集关闭：主动释放TCP套接字，防止TIME_WAIT/端口泄漏
-                if (mgr->tcp_ctx != NULL)
+                if (mgr.tcp_ctx != NULL)
                 {
-                    modbus_close(mgr->tcp_ctx);
-                    modbus_free(mgr->tcp_ctx);
-                    mgr->tcp_ctx = NULL;
+                    modbus_close(mgr.tcp_ctx);
+                    modbus_free(mgr.tcp_ctx);
+                    mgr.tcp_ctx = NULL;
                 }
                 LOG_INFO("TCP:云端指令关闭采集，已释放网络连接资源");
                 last_collect_state = 0;
                 //mqtt_publish_TCP_alarm("TCP采集未开启", "TCP采集未开启", "TCP采集未开启");
                                 // ★★★ 只记录状态，不发MQTT ★★★
 
-                mgr->tcp_status = 1;  // 采集关闭
-                snprintf(mgr->tcp_alarm_msg, sizeof(mgr->tcp_alarm_msg), "TCP采集已关闭");
+                mgr.tcp_status = 1;  // 采集关闭
+                snprintf(mgr.tcp_alarm_msg, sizeof(mgr.tcp_alarm_msg), "TCP采集已关闭");
             }
 
             // 低功耗休眠，避免空转耗CPU
@@ -113,43 +155,47 @@ static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
 
         // ========== 采集开启：正常执行工业级重试+采集逻辑 ==========
        // ========== 采集执行 ==========
-        if (modbus_robust_read(&mgr->tcp_ctx, 0, 10, mgr->regs) == -1)
+         printf(" IP=%s, 端口=%d, 从站=%d\n",
+               dev->ip, dev->port, dev->slave_id);
+        if (modbus_tcp_device_read(dev, &dev->ctx, 0, 10, dev->regs) == -1)
         {
             LOG_ERROR("TCP:所有热重试失败，60s冷休眠后重试");
             // ★★★ 记录故障状态 ★★★
-            mgr->tcp_status = 2;  // 离线故障
-            if (mgr->tcp_fail_time == 0) {
-                mgr->tcp_fail_time = time(NULL);
+            mgr.tcp_status = 2;  // 离线故障
+            if (mgr.tcp_fail_time == 0) {
+                mgr.tcp_fail_time = time(NULL);
                 char time_str[32];
-                strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&mgr->tcp_fail_time));
-                snprintf(mgr->tcp_alarm_msg, sizeof(mgr->tcp_alarm_msg),
+                strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&mgr.tcp_fail_time));
+                snprintf(mgr.tcp_alarm_msg, sizeof(mgr.tcp_alarm_msg),
                          "TCP离线，首次故障: %s", time_str);
             }
             sleep(60);
             continue;
         }
    // ★★★ 读取成功：清除故障记录 ★★★
-        if (mgr->tcp_status == 2) {
-            mgr->tcp_status = 0;
-            mgr->tcp_fail_time = 0;
-            snprintf(mgr->tcp_alarm_msg, sizeof(mgr->tcp_alarm_msg), "TCP已恢复");
+        if (mgr.tcp_status == 2) {
+            mgr.tcp_status = 0;
+            mgr.tcp_fail_time = 0;
+            snprintf(mgr.tcp_alarm_msg, sizeof(mgr.tcp_alarm_msg), "TCP已恢复");
         }
         // 打印采集数据
         for (int i = 0; i < 2; i++)
         {
-            LOG_INFO("TCP_REG[%d] = %d", i, mgr->regs[i]);
+            LOG_INFO("TCP_REG[%d] = %d", i, dev->regs[i]);
+            
         }
+      
         //TCP正常运行中
            //mqtt_publish_TCP_alarm("tcp_running", "tcp_running", "tcp采集运行中");
 
         // 加锁安全上报CAN总线（和RTU共用总线锁，防止总线冲突）
-        pthread_mutex_lock(&mgr->bus_mutex);   
-        if (can_send(0x123, 2, mgr->regs) != 0)
+        pthread_mutex_lock(&mgr.bus_mutex);   
+        if (can_send(0x123, 2, dev->regs) != 0)
         {
             LOG_WARN("TCP:CAN数据发送失败");
             
         }
-        pthread_mutex_unlock(&mgr->bus_mutex);
+        pthread_mutex_unlock(&mgr.bus_mutex);
 
         // 正常1s采集周期
         sleep(1);
@@ -338,7 +384,7 @@ void *MQTT_pthread(void *arg) {
 
 // ====================== 主函数 ======================
 int main(void) {
-  
+
 
 
 
@@ -373,10 +419,22 @@ int main(void) {
     modbus_relay_init();
     BMP280_READ_Init();
     data_cache_init();
+    init_tcp_devices();
     // 线程统一传全局mgr地址，全工程完全统一
     pthread_create(&mgr.threads[0], NULL, modbus_rtu_read, &mgr);
-    pthread_create(&mgr.threads[1], NULL, modbus_tcp_read, &mgr);
-    pthread_create(&mgr.threads[2], NULL, can_receive_pthread, &mgr);
+// ===== 动态创建 TCP 设备采集线程 =====
+
+for (int i = 0; i < mgr.tcp_device_count; i++) {
+    tcp_device_config_t *dev = &mgr.tcp_devices[i];
+    LOG_INFO("主程序:启动TCP设备 %s (%s:%d)", dev->ip, dev->ip, dev->port);
+    
+    // 每个线程传入设备索引，线程内部根据索引找到对应的设备
+    int *idx_ptr = malloc(sizeof(int));
+    *idx_ptr = i;
+    pthread_create(&mgr.threads[4 + i], NULL, modbus_tcp_read_generic, idx_ptr);
+}   
+
+ pthread_create(&mgr.threads[2], NULL, can_receive_pthread, &mgr);
     pthread_create(&mgr.threads[3], NULL, MQTT_pthread, &mgr);
 
     // 主线程循环

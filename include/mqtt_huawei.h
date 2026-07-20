@@ -40,5 +40,7 @@ void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosqu
 // // 云端RTU启停控制接口
 // void cloud_rtu_start(gateway_manager_t *mgr);
 // void cloud_rtu_stop(gateway_manager_t *mgr);
-
+int mqtt_publish_alarm(const char *device_type, int device_index,
+                       const char *alarm_type, const char *alarm_module,
+                       const char *alarm_msg);
 #endif

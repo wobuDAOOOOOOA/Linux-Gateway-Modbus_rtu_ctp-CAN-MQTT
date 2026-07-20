@@ -1,20 +1,33 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-typedef struct {
-    // RTU配置
-    char modbus_port[64];
-    int modbus_baudrate;
-    int modbus_slave_id;
+// ====================== 多设备最大数量定义 ======================
+#define MAX_TCP_DEVICES 4    // TCP设备最大数量
 
-    // TCP配置
+typedef struct {
+    // ===== RTU配置（单设备） =====
+    char modbus_port[64];
+    int  modbus_baudrate;
+    int  modbus_slave_id;
+
+    // ===== TCP配置（单设备，兼容旧代码） =====
     char modbus_ip[64];
     int  modbus_tcp_port;
 
-    // CAN配置
+    // ===== ★★★ TCP设备数组配置（新增） ★★★ =====
+    // 每个设备有独立的 IP、端口、从站ID、起始地址、读取数量、使能开关
+    // 这些字段会从配置文件中读取，格式：tcp_ip_0=192.168.2.1
+    char tcp_ip[MAX_TCP_DEVICES][64];
+    int  tcp_port[MAX_TCP_DEVICES];
+    int  tcp_slave_id[MAX_TCP_DEVICES];
+    int  tcp_read_addr[MAX_TCP_DEVICES];   // 起始寄存器地址
+    int  tcp_read_count[MAX_TCP_DEVICES];  // 读取寄存器数量
+    int  tcp_enable[MAX_TCP_DEVICES];      // 1=启用, 0=禁用
+
+    // ===== CAN配置 =====
     char can_interface[16];
 
-    // MQTT配置
+    // ===== MQTT配置 =====
     char mqtt_broker[64];
     int  mqtt_port;
     char mqtt_topic[256];
@@ -22,10 +35,10 @@ typedef struct {
     char mqtt_username[256];
     char mqtt_password[256];
 
-    // ★★★ 继电器配置（新增） ★★★
-    char relay_ip[64];       // 继电器IP地址
-    int  relay_port;         // 继电器端口
-    int  relay_slave_id;     // 继电器从站ID
+    // ===== 继电器配置 =====
+    char relay_ip[64];
+    int  relay_port;
+    int  relay_slave_id;
 
 } gateway_config_t;
 

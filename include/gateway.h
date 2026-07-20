@@ -11,11 +11,23 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <modbus/modbus.h>
+#define MAX_TCP_DEVICES 4
 
 // ====================== 工业级网关资源管理器 核心结构体 ======================
 typedef struct {
+    char ip[64];
+    int  port;
+    int  slave_id;
+    int  timeout_ms;      // 可选，超时时间
+    uint16_t regs[32];
+    modbus_t *ctx
+} tcp_device_config_t;
+
+
+
+typedef struct {
     // 线程句柄
-    pthread_t threads[4];
+    pthread_t threads[8];
 
     // 通信句柄
     modbus_t *rtu_ctx;
@@ -56,6 +68,10 @@ typedef struct {
     char rtu_alarm_msg[128];
     char tcp_alarm_msg[128];
     char can_alarm_msg[128];
+
+    tcp_device_config_t tcp_devices[MAX_TCP_DEVICES];
+    int tcp_device_count;
+
 } gateway_manager_t;
 
 // 全局唯一网关实例（所有文件共用）
