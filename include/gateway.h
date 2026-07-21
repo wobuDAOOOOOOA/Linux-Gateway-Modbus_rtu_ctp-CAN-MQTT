@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <modbus/modbus.h>
 #define MAX_TCP_DEVICES 4
+#define MAX_RTU_DEVICES 2
 
 // ====================== 工业级网关资源管理器 核心结构体 ======================
 typedef struct {
@@ -29,7 +30,29 @@ typedef struct {
     int last_collect_state
     
 } tcp_device_config_t;
+// gateway.h
+typedef struct {
+    // ---------- 配置参数 ----------
+    char port[64];
+    int  baudrate;
+    int  slave_id;
+    int  read_addr;
+    int  read_count;
 
+    // ---------- 运行时状态 ----------
+    modbus_t *ctx;
+    uint16_t regs[32];
+
+    int  status;                 // 0=正常, 1=采集关闭, 2=离线故障
+    int  last_reported_status;   // 上次上报的状态
+    int  last_collect_state;
+    char alarm_msg[128];
+    time_t fail_time;
+
+    int  collect_enable;         // 1=运行, 0=停止
+
+    char name[32];               // 设备名称
+} rtu_device_t;
 
 
 typedef struct {
@@ -75,6 +98,8 @@ typedef struct {
     char rtu_alarm_msg[128];
     char tcp_alarm_msg[128];
     char can_alarm_msg[128];
+    rtu_device_t rtu_devices[MAX_RTU_DEVICES];
+   int rtu_device_count;
 
     tcp_device_config_t tcp_devices[MAX_TCP_DEVICES];
     int tcp_device_count;

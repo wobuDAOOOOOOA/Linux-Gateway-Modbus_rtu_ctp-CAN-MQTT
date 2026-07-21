@@ -189,93 +189,107 @@ void *modbus_tcp_read_generic(void *arg)
 }
 
 
-void *modbus_rtu_read(void *arg)
+void *modbus_rtu_read_generic(void *arg)
 {
-gateway_manager_t *mgr = (gateway_manager_t *)arg;
-    // 记录上一次采集状态，用于去重日志
-int last_collect_state = mgr->rtu_collect_enable;
-static time_t first_fail_time_rtu = 0;  // 首次故障时间戳
+    int idx = *(int *)arg;
+    free(arg);
 
-    // 线程永久常驻，仅受全局running标记控制
-    while (mgr->running)
-    {
+    rtu_device_t *dev = &mgr.rtu_devices[idx];
+  // ===== 直接硬编码赋值所有成员（测试用） =====
+    // 配置参数
+    strcpy(dev->port, "/dev/ttyS3");
+    dev->baudrate = 4800;
+    dev->slave_id = 1;
+    dev->read_addr = 0;
+    dev->read_count = 2;
 
-        // ========== 云端启停控制核心逻辑（去重日志优化） ==========
-        if (!mgr->rtu_collect_enable)
-        {
-            // 仅【状态从开启→关闭】瞬间执行一次释放+日志
-            if (last_collect_state == 1)
-            {
-                // 采集关闭：主动释放串口资源，防止句柄泄漏
-                if (mgr->rtu_ctx != NULL)
-                {
-                    modbus_close(mgr->rtu_ctx);
-                    modbus_free(mgr->rtu_ctx);
-                    mgr->rtu_ctx = NULL;
+    // 运行时状态
+    dev->collect_enable = 1;
+    dev->status = 0;
+    dev->last_collect_state = 1;
+    dev->last_reported_status = -1;
+    dev->fail_time = 0;
+    dev->ctx = NULL;
+    snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "RTU初始化完成");
+    snprintf(dev->name, sizeof(dev->name), "RTU_Dev_%d", idx);
+
+    LOG_INFO("RTU设备%d: 串口=%s, 波特率=%d, 从站=%d, 读地址=%d, 读数量=%d",
+             idx, dev->port, dev->baudrate, dev->slave_id,
+             dev->read_addr, dev->read_count);
+
+    while (mgr.running) {
+        // ===== 采集开关状态变化检测 =====
+        if (!dev->collect_enable) {
+            if (dev->last_collect_state == 1) {
+                // 状态切换：开启 → 关闭
+                dev->status = 1;
+                snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "RTU采集已关闭");
+
+                if (dev->ctx != NULL) {
+                    modbus_close(dev->ctx);
+                    modbus_free(dev->ctx);
+                    dev->ctx = NULL;
                 }
-                LOG_INFO("RTU:云端指令关闭采集，已释放串口资源\n");
-                last_collect_state = 0;
-                  // ★★★ 只记录状态，不发MQTT ★★★
-                   mgr->rtu_status = 1;  // 采集关闭
-                snprintf(mgr->rtu_alarm_msg, sizeof(mgr->rtu_alarm_msg), "RTU采集已关闭");
+                LOG_INFO("RTU设备%d: 云端指令关闭采集，已释放串口资源", idx);
+                dev->last_collect_state = 0;
             }
-          //mqtt_publish_RTU_alarm("RTU采集未开启", "RTU采集未开启", "RTU采集未开启");
- // 低功耗休眠，避免空转耗CPU
             sleep(2);
             continue;
         }
 
-        // 仅【状态从关闭→开启】打印启动日志
-        if (last_collect_state == 0)
-        {
-            LOG_INFO("RTU:云端指令开启采集，恢复正常采集任务\n");
-            last_collect_state = 1;
+        // ===== 采集恢复：关闭 → 开启 =====
+        if (dev->last_collect_state == 0) {
+            LOG_INFO("RTU设备%d: 云端指令开启采集，恢复正常采集任务", idx);
+            dev->last_collect_state = 1;
+            if (dev->status == 2) {
+                dev->status = 0;
+                dev->fail_time = 0;
+                snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "RTU已恢复");
+            }
         }
 
-        // ========== 采集开启：正常执行原有重试+采集逻辑 ==========
-      
-// 重连失败达到MAX_RETRY时：
-if (modbus_rtu_robust_read(&mgr->rtu_ctx, 0, 2, mgr->rtu_data) == -1) {
-                LOG_ERROR("RTU:所有热重试失败，60s冷休眠后重试\n");
+        // ===== 执行采集 =====
+        printf("RTU设备%d: 串口=%s, 波特率=%d, 从站=%d\n",
+               idx, dev->port, dev->baudrate, dev->slave_id);
 
-            // ★★★ 记录故障状态 ★★★
-            mgr->rtu_status = 2;  // 离线故障
-            if (mgr->rtu_fail_time == 0) {
-                mgr->rtu_fail_time = time(NULL);
+        if (modbus_rtu_device_read(dev, 0, 2, dev->regs) == -1) {
+            LOG_ERROR("RTU设备%d: 所有热重试失败，60s冷休眠后重试", idx);
+            if (dev->status != 2) {
+                dev->status = 2;
+                dev->fail_time = time(NULL);
                 char time_str[32];
-                strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&mgr->rtu_fail_time));
-                snprintf(mgr->rtu_alarm_msg, sizeof(mgr->rtu_alarm_msg),
+                strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&dev->fail_time));
+                snprintf(dev->alarm_msg, sizeof(dev->alarm_msg),
                          "RTU离线，首次故障: %s", time_str);
             }
             sleep(60);
             continue;
         }
-  // ★★★ 读取成功：清除故障记录 ★★★
-        if (mgr->rtu_status == 2) {
-            mgr->rtu_status = 0;
-            mgr->rtu_fail_time = 0;
-            snprintf(mgr->rtu_alarm_msg, sizeof(mgr->rtu_alarm_msg), "RTU已恢复");
+
+        // ===== 读取成功：如果当前是故障状态，恢复 =====
+        if (dev->status == 2) {
+            dev->status = 0;
+            dev->fail_time = 0;
+            snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "RTU已恢复");
+            LOG_INFO("RTU设备%d: 故障恢复", idx);
         }
+
         // 打印采集数据
-        for (int i = 0; i < 2; i++)
-        {
-            LOG_INFO("RTU_DATA[%d] = %d\n", i, mgr->rtu_data[i]);
+        for (int i = 0; i < 2; i++) {
+            LOG_INFO("RTU_DATA[%d] = %d", i, dev->regs[i]);
         }
 
-        //mqtt_publish_RTU_alarm("rtu_running", "rtu_running", "rtu采集运行中");
-
-        pthread_mutex_lock(&mgr->bus_mutex);
-        if (can_send(0x123, 2, mgr->rtu_data) != 0)
-        {
-            LOG_WARN("RTU:CAN数据发送失败\n");
+        // 发送到 CAN 总线
+        pthread_mutex_lock(&mgr.bus_mutex);
+        if (can_send(0x123, 2, dev->regs) != 0) {
+            LOG_WARN("RTU设备%d: CAN数据发送失败", idx);
         }
-        pthread_mutex_unlock(&mgr->bus_mutex);
+        pthread_mutex_unlock(&mgr.bus_mutex);
 
-        // 正常1s采集周期
         sleep(1);
     }
 
-    LOG_INFO("RTU采集线程全局退出\n");
+    LOG_INFO("RTU采集线程全局退出");
     return NULL;
 }
 
@@ -424,7 +438,7 @@ int main(void) {
     data_cache_init();
     init_tcp_devices();
     // 线程统一传全局mgr地址，全工程完全统一
-    pthread_create(&mgr.threads[0], NULL, modbus_rtu_read, &mgr);
+    pthread_create(&mgr.threads[0], NULL, modbus_rtu_read_generic, &mgr);
 // ===== 动态创建 TCP 设备采集线程 =====
 
 for (int i = 0; i < mgr.tcp_device_count; i++) {

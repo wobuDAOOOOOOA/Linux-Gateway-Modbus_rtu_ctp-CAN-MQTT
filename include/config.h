@@ -3,6 +3,7 @@
 
 // ====================== 多设备最大数量定义 ======================
 #define MAX_TCP_DEVICES 4    // TCP设备最大数量
+#define MAX_RTU_DEVICES 2  // RTU设备最大数量
 
 typedef struct {
     // ===== RTU配置（单设备） =====
@@ -24,6 +25,13 @@ typedef struct {
     int  tcp_read_count[MAX_TCP_DEVICES];  // 读取寄存器数量
     int  tcp_enable[MAX_TCP_DEVICES];      // 1=启用, 0=禁用
 
+ // ★★★ RTU设备数组配置（新增） ★★★
+    char rtu_port[MAX_RTU_DEVICES][64];
+    int  rtu_baudrate[MAX_RTU_DEVICES];
+    int  rtu_slave_id[MAX_RTU_DEVICES];
+    int  rtu_read_addr[MAX_RTU_DEVICES];
+    int  rtu_read_count[MAX_RTU_DEVICES];
+    int  rtu_enable[MAX_RTU_DEVICES];      // 1=启用, 0=禁用
     // ===== CAN配置 =====
     char can_interface[16];
 

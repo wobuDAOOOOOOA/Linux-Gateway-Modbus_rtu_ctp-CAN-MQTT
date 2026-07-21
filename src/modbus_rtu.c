@@ -5,7 +5,7 @@
 #include <time.h>
 #include"log.h"
 #include"config.h"
-
+#include "gateway.h"
 #define RTU_MAXretry     3
 #define RTU_BASE_DELAY   5    // 基础延时5s
 
@@ -84,6 +84,92 @@ int modbus_rtu_robust_read(modbus_t **ctx, int addr, int nb, uint16_t *dest)
         modbus_close(*ctx);
         modbus_free(*ctx);
         *ctx = NULL;
+        retry++;
+
+        // 指数退避延时
+        if(retry < RTU_MAXretry)
+        {
+            int delay = RTU_BASE_DELAY * (1 << retry);
+            int jitter = rand() % 4 - 2;
+            delay += jitter;
+            if(delay < 1) delay = 1;
+            LOG_ERROR("RTU:第%d次重试，等待%ds", retry, delay);
+            sleep(delay);
+        }
+    }
+
+    LOG_ERROR("RTU:读取重试耗尽，最大重试次数%d", RTU_MAXretry);
+
+    return -1;
+}
+// ★★★ 通用连接函数（和 TCP 对称） ★★★
+modbus_t* modbus_rtu_connect(const char *port, int baudrate, int slave_id)
+{
+    modbus_t *ctx = modbus_new_rtu(port, baudrate, 'N', 8, 1);
+    if (ctx == NULL) {
+        LOG_ERROR("RTU:创建上下文失败");
+        return NULL;
+    }
+
+    modbus_set_response_timeout(ctx, 0, 500000);
+    modbus_set_slave(ctx, slave_id);
+
+    if (modbus_connect(ctx) == -1) {
+        LOG_ERROR("RTU:连接失败");
+        modbus_free(ctx);
+        return NULL;
+    }
+
+    LOG_INFO("RTU:连接成功");
+    return ctx;
+}
+int modbus_rtu_device_read(rtu_device_t *dev, int addr, int nb, uint16_t *dest)
+{
+    int retry = 0;
+    int rc;
+   
+
+    while(retry < RTU_MAXretry)
+    {
+        // 1. 句柄为空，执行重连
+        if (dev->ctx == NULL)
+        {
+            LOG_ERROR("RTU:句柄为空，第%d次重连", retry+1);
+            dev->ctx = modbus_rtu_connect(dev->port, dev->baudrate, dev->slave_id);
+            if (dev->ctx == NULL)
+            {
+                // 重连失败，指数退避等待
+                int delay = RTU_BASE_DELAY * (1 << retry);
+                // 随机抖动 ±2s，避免多设备同步重试
+                int jitter = rand() % 4 - 2;
+                delay += jitter;
+                if(delay < 1) delay = 1;
+
+                retry++;
+                if (retry < RTU_MAXretry)
+                {
+                    LOG_ERROR("RTU:重连失败，等待%ds后重试", delay);
+                    sleep(delay);
+                }
+                continue; // 回到循环开头再次判断
+            }
+            // 重连成功，不增加retry，直接往下执行读取
+        }
+
+        // 2. 句柄有效，执行寄存器读取
+        modbus_set_slave(dev->ctx, cfg.modbus_slave_id);
+        rc = modbus_read_registers(dev->ctx, addr, nb, dest);
+        if (rc != -1)
+        {
+            LOG_INFO("RTU:读取成功，获取%d个寄存器", rc);
+            return rc;
+        }
+
+        // 3. 读取失败，销毁连接，准备重试
+        LOG_ERROR("RTU:读取失败 err=%s，销毁连接准备重试", modbus_strerror(errno));
+        modbus_close(dev->ctx);
+        modbus_free(dev->ctx);
+        dev->ctx = NULL;
         retry++;
 
         // 指数退避延时
