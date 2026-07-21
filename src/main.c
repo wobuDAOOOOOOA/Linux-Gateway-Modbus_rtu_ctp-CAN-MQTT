@@ -100,70 +100,58 @@ void init_tcp_devices(void)
 
 void *modbus_tcp_read_generic(void *arg)
 {
-int idx = *(int *)arg;
-    free(arg);  // 释放传入的索引内存（可选，但推荐）
+    int idx = *(int *)arg;
+    free(arg);
 
-    // 记录上一次采集状态，用于去重日志
-    // gateway_manager_t *mgr = &mgr;  // 或者直接用全局 mgr
-  tcp_device_config_t *dev = &mgr.tcp_devices[idx];
+    tcp_device_config_t *dev = &mgr.tcp_devices[idx];
 
-static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
-    // ★★★ 添加这一行：声明 dev 变量，指向第一个 TCP 设备 ★★★
+    // 初始化采集状态
+    dev->collect_enable = 1;
+    dev->last_collect_state = 1;  // 初始为开启
 
-    // 线程永久常驻，仅受全局running标记控制
-    int last_collect_state = mgr.tcp_collect_enable;
+    while (mgr.running) {
+        // ===== 采集开关状态变化检测 =====
+        if (!dev->collect_enable) {
+            // 采集被关闭
+            if (dev->last_collect_state == 1) {
+                // 状态切换：开启 → 关闭
+                dev->status = 1;  // 采集关闭
+                snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "TCP采集已关闭");
 
-    while (mgr.running)
-    {
-
-        int jj = mgr.tcp_collect_enable;
-        LOG_INFO("TCP采集开关状态:%d",jj);
-
-        // ========== 云端启停控制核心逻辑（与RTU完全对称） ==========
-        if (!mgr.tcp_collect_enable)
-        {
-            // 仅【状态从开启→关闭】瞬间执行一次释放+日志
-            if (last_collect_state == 1)
-            {
-                // 采集关闭：主动释放TCP套接字，防止TIME_WAIT/端口泄漏
-                if (mgr.tcp_ctx != NULL)
-                {
+                // 释放连接资源
+                if (dev->ctx != NULL) {
                     modbus_close(dev->ctx);
                     modbus_free(dev->ctx);
                     dev->ctx = NULL;
                 }
-                LOG_INFO("TCP:云端指令关闭采集，已释放网络连接资源");
-                dev->last_reported_status = 0;
-                //mqtt_publish_TCP_alarm("TCP采集未开启", "TCP采集未开启", "TCP采集未开启");
-                                // ★★★ 只记录状态，不发MQTT ★★★
-
-                dev->status = 1;  // 采集关闭
-                snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "TCP采集已关闭");
+                LOG_INFO("TCP设备%d: 云端指令关闭采集，已释放连接资源", idx);
+                dev->last_collect_state = 0;
             }
-
-            // 低功耗休眠，避免空转耗CPU
             sleep(2);
             continue;
         }
-        
-        // 仅【状态从关闭→开启】打印启动日志
-        if (last_collect_state == 0)
-        {
-            LOG_INFO("TCP:云端指令开启采集，恢复正常采集任务");
-            last_collect_state = 1;
+
+        // ===== 采集恢复：关闭 → 开启 =====
+        if (dev->last_collect_state == 0) {
+            LOG_INFO("TCP设备%d: 云端指令开启采集，恢复正常采集任务", idx);
+            dev->last_collect_state = 1;
+            // 恢复时清除之前的故障状态（如果之前是离线故障）
+            if (dev->status == 2 || dev->status == 1) {
+                dev->status = 0;
+                dev->tcp_fail_time = 0;
+                snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "TCP已恢复");
+            }
         }
 
-        // ========== 采集开启：正常执行工业级重试+采集逻辑 ==========
-       // ========== 采集执行 ==========
-         printf(" IP=%s, 端口=%d, 从站=%d\n",
-               dev->ip, dev->port, dev->slave_id);
-        if (modbus_tcp_device_read(dev, &dev->ctx, 0, 10, dev->regs) == -1)
-        {
-            LOG_ERROR("TCP:所有热重试失败，60s冷休眠后重试");
-            // ★★★ 记录故障状态 ★★★
-            dev->status = 2;  // 离线故障
-            if (dev->tcp_fail_time == 0) {
-               dev->tcp_fail_time = time(NULL);
+        // ===== 执行采集 =====
+        printf("IP=%s, 端口=%d, 从站=%d\n", dev->ip, dev->port, dev->slave_id);
+
+        if (modbus_tcp_device_read(dev, &dev->ctx, 0, 10, dev->regs) == -1) {
+            LOG_ERROR("TCP设备%d: 所有热重试失败，60s冷休眠后重试", idx);
+            // ★★★ 只有在之前不是故障状态时才更新故障信息 ★★★
+            if (dev->status != 2) {
+                dev->status = 2;  // 离线故障
+                dev->tcp_fail_time = time(NULL);
                 char time_str[32];
                 strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", localtime(&dev->tcp_fail_time));
                 snprintf(dev->alarm_msg, sizeof(dev->alarm_msg),
@@ -172,32 +160,27 @@ static time_t first_fail_time_tcp = 0;  // 首次故障时间戳
             sleep(60);
             continue;
         }
-   // ★★★ 读取成功：清除故障记录 ★★★
-        if (dev->status== 2) {
+
+        // ===== 读取成功：如果当前是故障状态，恢复 =====
+        if (dev->status == 2) {
             dev->status = 0;
             dev->tcp_fail_time = 0;
             snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "TCP已恢复");
+            LOG_INFO("TCP设备%d: 故障恢复", idx);
         }
-        // 打印采集数据
-        for (int i = 0; i < 2; i++)
-        {
-            LOG_INFO("TCP_REG[%d] = %d", i, dev->regs[i]);
-            
-        }
-      
-        //TCP正常运行中
-           //mqtt_publish_TCP_alarm("tcp_running", "tcp_running", "tcp采集运行中");
 
-        // 加锁安全上报CAN总线（和RTU共用总线锁，防止总线冲突）
-        pthread_mutex_lock(&mgr.bus_mutex);   
-        if (can_send(0x123, 2, dev->regs) != 0)
-        {
+        // 打印采集数据
+        for (int i = 0; i < 2; i++) {
+            LOG_INFO("TCP_REG[%d] = %d", i, dev->regs[i]);
+        }
+
+        // 发送到 CAN 总线
+        pthread_mutex_lock(&mgr.bus_mutex);
+        if (can_send(0x123, 2, dev->regs) != 0) {
             LOG_WARN("TCP:CAN数据发送失败");
-            
         }
         pthread_mutex_unlock(&mgr.bus_mutex);
 
-        // 正常1s采集周期
         sleep(1);
     }
 

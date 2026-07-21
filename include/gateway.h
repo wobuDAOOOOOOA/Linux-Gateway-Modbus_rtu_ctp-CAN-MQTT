@@ -25,8 +25,9 @@ typedef struct {
     int status ;
     char alarm_msg[128];
     time_t tcp_fail_time;
-    int tcp_collect_enable;
-
+    int collect_enable;
+    int last_collect_state
+    
 } tcp_device_config_t;
 
 
