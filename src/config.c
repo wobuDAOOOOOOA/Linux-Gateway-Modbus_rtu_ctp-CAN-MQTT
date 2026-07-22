@@ -60,6 +60,21 @@ void config_set_default(gateway_config_t *cfg_ptr)
     strcpy(cfg_ptr->relay_ip, "192.168.0.10");
     cfg_ptr->relay_port = 502;
     cfg_ptr->relay_slave_id = 1;
+
+
+    for (int i = 0; i < MAX_RTU_DEVICES; i++) {
+    if (i == 0) {
+        strcpy(cfg_ptr->rtu_port[i], "/dev/ttyS3");
+        cfg_ptr->rtu_baudrate[i] = 4800;
+        cfg_ptr->rtu_slave_id[i] = 1;
+        cfg_ptr->rtu_read_addr[i] = 0;
+        cfg_ptr->rtu_read_count[i] = 2;
+        cfg_ptr->rtu_enable[i] = 1;
+    } else {
+        cfg_ptr->rtu_enable[i] = 0;  // 默认禁用
+        cfg_ptr->rtu_port[i][0] = '\0';
+    }
+}
 }
 
 int config_load(const char *filename, gateway_config_t *cfg_ptr)
@@ -143,6 +158,25 @@ int config_load(const char *filename, gateway_config_t *cfg_ptr)
                 cfg_ptr->tcp_enable[i] = atoi(value);
             }
         }
+        // config_load 中添加解析（参照 TCP 写法）
+for (int i = 0; i < MAX_RTU_DEVICES; i++) {
+    char key_port[32], key_baud[32], key_slave[32], key_addr[32], key_count[32], key_enable[32];
+    snprintf(key_port, sizeof(key_port), "rtu_port_%d", i);
+    snprintf(key_baud, sizeof(key_baud), "rtu_baudrate_%d", i);
+    snprintf(key_slave, sizeof(key_slave), "rtu_slave_id_%d", i);
+    snprintf(key_addr, sizeof(key_addr), "rtu_read_addr_%d", i);
+    snprintf(key_count, sizeof(key_count), "rtu_read_count_%d", i);
+    snprintf(key_enable, sizeof(key_enable), "rtu_enable_%d", i);
+
+    if (strcmp(key, key_port) == 0) strcpy(cfg_ptr->rtu_port[i], value);
+    else if (strcmp(key, key_baud) == 0) cfg_ptr->rtu_baudrate[i] = atoi(value);
+    else if (strcmp(key, key_slave) == 0) cfg_ptr->rtu_slave_id[i] = atoi(value);
+    else if (strcmp(key, key_addr) == 0) cfg_ptr->rtu_read_addr[i] = atoi(value);
+    else if (strcmp(key, key_count) == 0) cfg_ptr->rtu_read_count[i] = atoi(value);
+    else if (strcmp(key, key_enable) == 0) cfg_ptr->rtu_enable[i] = atoi(value);
+
+    // ... 以此类推
+}
     }
 
     fclose(fp);

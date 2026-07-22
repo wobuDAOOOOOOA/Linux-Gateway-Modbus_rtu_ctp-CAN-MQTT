@@ -28,6 +28,8 @@ static void gateway_manager_init(gateway_manager_t *mgr)
     // 初始化锁
     pthread_mutex_init(&mgr->data_mutex, NULL);
     pthread_mutex_init(&mgr->bus_mutex, NULL);
+    pthread_mutex_init(&mgr->read_mutex, NULL);
+
        // 开启运行开关
     mgr->running = ture;
     mgr->rtu_collect_enable=1;
@@ -97,7 +99,30 @@ void init_tcp_devices(void)
     // 5. 记录实际启用的设备数量
     mgr.tcp_device_count = count;
 }
+// main.c - 新增初始化函数
+void init_rtu_devices(void)
+{
+    memset(mgr.rtu_devices, 0, sizeof(mgr.rtu_devices));
+    int count = 0;
 
+    for (int i = 0; i < MAX_RTU_DEVICES; i++) {
+        if (cfg.rtu_enable[i] == 0) continue;
+
+        rtu_device_t *dev = &mgr.rtu_devices[count];
+        strcpy(dev->port, cfg.rtu_port[i]);
+        dev->baudrate = cfg.rtu_baudrate[i];
+        dev->slave_id = cfg.rtu_slave_id[i];
+        dev->read_addr = cfg.rtu_read_addr[i];
+        dev->read_count = cfg.rtu_read_count[i];
+        dev->collect_enable = 1;
+        dev->ctx = NULL;
+        snprintf(dev->name, sizeof(dev->name), "RTU_Dev_%d", i);
+
+        count++;
+    }
+
+    mgr.rtu_device_count = count;
+}
 void *modbus_tcp_read_generic(void *arg)
 {
     int idx = *(int *)arg;
@@ -195,21 +220,21 @@ void *modbus_rtu_read_generic(void *arg)
     free(arg);
 
     rtu_device_t *dev = &mgr.rtu_devices[idx];
-  // ===== 直接硬编码赋值所有成员（测试用） =====
-    // 配置参数
-    strcpy(dev->port, "/dev/ttyS3");
-    dev->baudrate = 4800;
-    dev->slave_id = 1;
-    dev->read_addr = 0;
-    dev->read_count = 2;
+//   // ===== 直接硬编码赋值所有成员（测试用） =====
+//     // 配置参数
+//     strcpy(dev->port, "/dev/ttyS3");
+//     dev->baudrate = 4800;
+//     dev->slave_id = 1;
+//     dev->read_addr = 0;
+//     dev->read_count = 2;
 
-    // 运行时状态
-    dev->collect_enable = 1;
-    dev->status = 0;
-    dev->last_collect_state = 1;
-    dev->last_reported_status = -1;
-    dev->fail_time = 0;
-    dev->ctx = NULL;
+//     // 运行时状态
+//     dev->collect_enable = 1;
+//     dev->status = 0;
+//     dev->last_collect_state = 1;
+//     dev->last_reported_status = -1;
+//     dev->fail_time = 0;
+//     dev->ctx = NULL;
     snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "RTU初始化完成");
     snprintf(dev->name, sizeof(dev->name), "RTU_Dev_%d", idx);
 
@@ -276,7 +301,7 @@ void *modbus_rtu_read_generic(void *arg)
 
         // 打印采集数据
         for (int i = 0; i < 2; i++) {
-            LOG_INFO("RTU_DATA[%d] = %d", i, dev->regs[i]);
+            LOG_INFO("RTU_DATA[%d] = %d .从站地址：%d", i, dev->regs[i],dev->slave_id);
         }
 
         // 发送到 CAN 总线
@@ -437,9 +462,18 @@ int main(void) {
     BMP280_READ_Init();
     data_cache_init();
     init_tcp_devices();
+    init_rtu_devices();
+
     // 线程统一传全局mgr地址，全工程完全统一
-    pthread_create(&mgr.threads[0], NULL, modbus_rtu_read_generic, &mgr);
-// ===== 动态创建 TCP 设备采集线程 =====
+// 动态创建 RTU 线程
+for (int i = 0; i < mgr.rtu_device_count; i++) {
+    rtu_device_t  *dev = &mgr.rtu_devices[i];
+        LOG_INFO("主程序:启动RTU设备 %s (%D:%d)", dev->port, dev->slave_id, dev->baudrate);
+
+    int *idx_ptr = malloc(sizeof(int));
+    *idx_ptr = i;
+    pthread_create(&mgr.threads[10 + i], NULL, modbus_rtu_read_generic, idx_ptr);
+}// ===== 动态创建 TCP 设备采集线程 =====
 
 for (int i = 0; i < mgr.tcp_device_count; i++) {
     tcp_device_config_t *dev = &mgr.tcp_devices[i];

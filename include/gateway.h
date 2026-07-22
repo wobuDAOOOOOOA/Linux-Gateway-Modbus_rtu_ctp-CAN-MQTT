@@ -66,7 +66,7 @@ typedef struct {
     // 同步互斥锁
     pthread_mutex_t data_mutex;
     pthread_mutex_t bus_mutex;
-
+    pthread_mutex_t read_mutex;
     // 全局运行状态机
     uint8_t running;
 
