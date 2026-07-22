@@ -221,7 +221,7 @@ int can_send(uint16_t id, uint16_t dlc, unsigned short *data)
         }
 
         if (write(s, &tx_frame, sizeof(tx_frame)) == sizeof(tx_frame)) {
-            LOG_INFO("CAN:发送成功 ID=0x%x, DLC=%d", id, dlc);
+            LOG_INFO("CAN:发送成功 ID=0x%x, DLC=%d  data:%D", id, dlc,data[0]);
             return 0;
         }
 
@@ -249,6 +249,8 @@ int can_send(uint16_t id, uint16_t dlc, unsigned short *data)
 // ====================== CAN 接收 ======================
 int can_receive(unsigned char *buffer, int *len)
 {
+                printf("XXXXCAN  SETP 11111\n");
+
     if (s < 0) {
         LOG_WARN("CAN:接收时socket无效");
         can_reinit();
@@ -256,7 +258,9 @@ int can_receive(unsigned char *buffer, int *len)
         return -1;
     }
 
+
     int nbytes = read(s, &frame, sizeof(frame));
+                printf("XXXXCAN  SETP 2222\n");
 
     if (nbytes < 0) {
         if (errno != EAGAIN) {
@@ -277,7 +281,7 @@ int can_receive(unsigned char *buffer, int *len)
         for (int i = 0; i < frame.can_dlc; i++) {
             buffer[i] = frame.data[i];
         }
-        LOG_DEBUG("CAN:收到 ID=0x%x, DLC=%d", frame.can_id, frame.can_dlc);
+        LOG_DEBUG("CAN:收到 ID=0x%x, DLC=%d, data:%d", frame.can_id, frame.can_dlc,frame.data[0]);
         return 0;
     }
 

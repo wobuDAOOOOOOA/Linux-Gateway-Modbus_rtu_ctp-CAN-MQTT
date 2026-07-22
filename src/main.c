@@ -266,7 +266,7 @@ void *modbus_rtu_read_generic(void *arg)
         if (dev->last_collect_state == 0) {
             LOG_INFO("RTU设备%d: 云端指令开启采集，恢复正常采集任务", idx);
             dev->last_collect_state = 1;
-            if (dev->status == 2) {
+            if (dev->status == 2|| dev->status == 1) {
                 dev->status = 0;
                 dev->fail_time = 0;
                 snprintf(dev->alarm_msg, sizeof(dev->alarm_msg), "RTU已恢复");
@@ -319,18 +319,21 @@ void *modbus_rtu_read_generic(void *arg)
 }
 
 void *can_receive_pthread(void *arg) {
-    gateway_manager_t *mgr = (gateway_manager_t *)arg;
     unsigned char data[8];
     int len;
 
-    while (mgr->running) {
+    while (mgr.running) {
+
         if (can_receive(data, &len) == 0) {
-            pthread_mutex_lock(&mgr->data_mutex);
+
             if (len >= 2) {
-                mgr->latest_humidity = data[0];
-                mgr->latest_temperature = data[1];
+        pthread_mutex_lock(&mgr.bus_mutex);
+
+                mgr.latest_humidity = data[0];
+                mgr.latest_temperature = data[1];
+        pthread_mutex_unlock(&mgr.bus_mutex);
+
             }
-            pthread_mutex_unlock(&mgr->data_mutex);
         }
         sleep(1);
     }
@@ -353,40 +356,30 @@ void *MQTT_pthread(void *arg) {
 
         if (mgr.mqtt_connect_states) {
             data_cache_flush();
-            pthread_mutex_lock(&mgr.data_mutex);
+         //  pthread_mutex_lock(&mgr.data_mutex);
             MQTT_publish(mgr.latest_temperature, mgr.latest_humidity, mgr.press);
-            pthread_mutex_unlock(&mgr.data_mutex);
+         //  pthread_mutex_unlock(&mgr.data_mutex);
         } else {
             data_cache_push_telemetry(mgr.latest_temperature, mgr.latest_humidity, mgr.press);
             printf("【缓存】MQTT离线，数据已缓存\n");
         }
 
-        // ===== RTU 状态上报 =====
-        if (mgr.rtu_status != last_rtu_status) {
-            if (mgr.rtu_status == 0) {
-                mqtt_publish_RTU_alarm("rtu_running", "RTU", "RTU采集运行中");
-            } else if (mgr.rtu_status == 1) {
-                mqtt_publish_RTU_alarm("rtu_stopped", "RTU", "RTU采集已关闭");
-            } else if (mgr.rtu_status == 2) {
-                mqtt_publish_RTU_alarm("rtu_offline", "RTU", mgr.rtu_alarm_msg);
-            }
-            last_rtu_status = mgr.rtu_status;
+   // ===== RTU 设备状态上报 =====
+        for (int i = 0; i < mgr.rtu_device_count; i++) {
+            rtu_device_t *dev = &mgr.rtu_devices[i];
+          //  if (dev->status != dev->last_reported_status) {
+                if (dev->status == 0) {
+                    mqtt_publish_alarm("RTU", i, "running", "RTU", "RTU采集运行中");
+                } else if (dev->status == 1) {
+                    mqtt_publish_alarm("RTU", i, "stopped", "RTU", "RTU采集已关闭");
+                } else if (dev->status == 2) {
+                    mqtt_publish_alarm("RTU", i, "offline", "RTU", dev->alarm_msg);
+                }
+                dev->last_reported_status = dev->status;
+            //}
         }
 
-       // ===== TCP 设备状态上报（遍历所有设备） =====
-// for (int i = 0; i < mgr.tcp_device_count; i++) {
-//   tcp_device_config_t *dev = &mgr.tcp_devices[idx];
-//     if (mgr.tcp_status != last_tcp_status) {
-//         if (mgr.tcp_status == 0) {
-//             mqtt_publish_alarm("TCP", i, "running", "TCP", "TCP采集运行中");
-//         } else if (mgr.tcp_status == 1) {
-//             mqtt_publish_alarm("TCP", i, "stopped", "TCP", "TCP采集已关闭");
-//         } else if (mgr.tcp_status == 2) {
-//             mqtt_publish_alarm("TCP", i, "offline", "TCP", mgr.tcp_alarm_msg);
-//         }
-//         last_tcp_status = mgr.tcp_status;
-//     }
-// }
+
 // ===== TCP 设备状态上报（遍历所有设备） =====
 for (int i = 0; i < mgr.tcp_device_count; i++) {
     tcp_device_config_t *dev = &mgr.tcp_devices[i];
@@ -486,7 +479,7 @@ for (int i = 0; i < mgr.tcp_device_count; i++) {
 }   
 
  pthread_create(&mgr.threads[2], NULL, can_receive_pthread, &mgr);
-    pthread_create(&mgr.threads[3], NULL, MQTT_pthread, &mgr);
+    pthread_create(&mgr.threads[0], NULL, MQTT_pthread, &mgr);
 
     // 主线程循环
     while(1)

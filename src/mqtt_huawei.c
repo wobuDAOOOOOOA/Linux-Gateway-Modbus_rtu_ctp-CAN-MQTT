@@ -53,37 +53,58 @@ void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosqu
 
     printf("收到云端下发指令: %s\n", payload_buf);
 
-     // ===== RTU 控制（保持不变） =====
-    if(strstr(payload_buf, "rtu_start") != NULL) {
-        mgr.rtu_collect_enable = 1;
-        printf("【MQTT下发】开启RTU采集成功！\n");
-        modbus_relay_off(0);
-        mqtt_send_command_response(request_id, 0, NULL);
-        return;
-    }
-    else if(strstr(payload_buf, "rtu_stop") != NULL) {
-        mgr.rtu_collect_enable = 0;
-        printf("【MQTT下发】关闭RTU采集成功！\n");
-        modbus_relay_on(0);
+    // ===== RTU 控制 =====
+    if(strstr(payload_buf, "rtu_start") != NULL || strstr(payload_buf, "rtu_stop") != NULL) {
+        int is_start = (strstr(payload_buf, "rtu_start") != NULL);
+        int is_all = (strstr(payload_buf, "all") != NULL);
+        int device_idx = -1;
+
+        // 解析设备编号
+        if(!is_all) {
+            char *last_char = payload_buf + strlen(payload_buf) - 1;
+            device_idx = *last_char - '0';
+            if(device_idx < 0 || device_idx >= mgr.rtu_device_count) {
+                LOG_ERROR("MQTT下发: 无效的RTU设备编号 %d", device_idx);
+                mqtt_send_command_response(request_id, -1, "invalid rtu device index");
+                return;
+            }
+        }
+
+        // 执行操作
+        if(is_all) {
+            for(int i = 0; i < mgr.rtu_device_count; i++) {
+                mgr.rtu_devices[i].collect_enable = is_start ? 1 : 0;
+                LOG_INFO("MQTT下发: %s RTU设备%d采集", is_start ? "开启" : "关闭", i);
+            }
+        } else {
+            mgr.rtu_devices[device_idx].collect_enable = is_start ? 1 : 0;
+            LOG_INFO("MQTT下发: %s RTU设备%d采集", is_start ? "开启" : "关闭", device_idx);
+        }
+
+        // RTU 控制继电器（保持兼容）
+        if(is_start) {
+            modbus_relay_off(0);
+        } else {
+            modbus_relay_on(0);
+        }
+
         mqtt_send_command_response(request_id, 0, NULL);
         return;
     }
 
     // ===== TCP 控制（支持多设备） =====
-    // 指令格式：tcp_start_0, tcp_stop_1, tcp_start_all, tcp_stop_all
     if(strstr(payload_buf, "tcp_start") != NULL || strstr(payload_buf, "tcp_stop") != NULL) {
-        int device_idx = -1;
         int is_start = (strstr(payload_buf, "tcp_start") != NULL);
         int is_all = (strstr(payload_buf, "all") != NULL);
+        int device_idx = -1;
 
         // 解析设备编号
         if(!is_all) {
-            // 从字符串末尾提取数字，如 "tcp_start_0" → 0
             char *last_char = payload_buf + strlen(payload_buf) - 1;
             device_idx = *last_char - '0';
             if(device_idx < 0 || device_idx >= mgr.tcp_device_count) {
-                LOG_ERROR("MQTT下发: 无效的设备编号 %d", device_idx);
-                mqtt_send_command_response(request_id, -1, "invalid device index");
+                LOG_ERROR("MQTT下发: 无效的TCP设备编号 %d", device_idx);
+                mqtt_send_command_response(request_id, -1, "invalid tcp device index");
                 return;
             }
         }
@@ -103,6 +124,9 @@ void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosqu
         return;
     }
 
+    // ===== 未知指令处理 =====
+    LOG_WARN("MQTT下发: 未识别的指令 %s", payload_buf);
+    mqtt_send_command_response(request_id, -1, "unknown command");
 }
 
 // ====================== 连接成功回调 ======================
